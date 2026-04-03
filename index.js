@@ -318,6 +318,24 @@ let silueta;
 
 // /////////// Camara
 
+function mostrarErrorCamara(err) {
+    loaderHTML.style.display = 'none';
+    let msg;
+    if (err.name === 'NotFoundError' || err.name === 'DeviceNotFoundError') {
+	msg = 'No se encontró ninguna cámara.<br>Conecta una cámara y recarga la página.';
+    } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+	msg = 'Se necesita permiso para usar la cámara.<br>Permite el acceso en el navegador y recarga la página.';
+    } else if (err.name === 'NotReadableError') {
+	msg = 'La cámara está siendo usada por otra aplicación.<br>Ciérrala y recarga la página.';
+    } else {
+	msg = 'No fue posible acceder a la cámara.<br>Verifica que esté conectada y disponible.';
+    }
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-family:Monospace;font-size:14px;text-align:center;z-index:999;line-height:2;';
+    div.innerHTML = msg;
+    document.body.appendChild(div);
+}
+
 async function setupCamera() {
 
     if(navigator.userAgent.match(/firefox|fxios/i)){
@@ -346,16 +364,27 @@ async function setupCamera() {
 	}}
     
     video = document.getElementById('video');
-    stream = await navigator.mediaDevices.getUserMedia({
-	'audio': false,
-	'video': {
-	    facingMode: 'user',
-	    width: mobile ? undefined : camWidth,
-	    height: mobile ? undefined : camHeight,
-	    // frameRate: {ideal: 20, max: 60},
-	}
-    });
-    
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+	mostrarErrorCamara({ name: 'NotFoundError' });
+	throw new Error('getUserMedia no disponible');
+    }
+
+    try {
+	stream = await navigator.mediaDevices.getUserMedia({
+	    'audio': false,
+	    'video': {
+		facingMode: 'user',
+		width: mobile ? undefined : camWidth,
+		height: mobile ? undefined : camHeight,
+		// frameRate: {ideal: 20, max: 60},
+	    }
+	});
+    } catch (err) {
+	mostrarErrorCamara(err);
+	throw err;
+    }
+
     video.srcObject = stream;
     let {width, height} = stream.getTracks()[0].getSettings();
     console.log('Resolución:'+ `${width}x${height}`); // 640x480
