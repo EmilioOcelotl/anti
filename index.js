@@ -29,8 +29,22 @@ let boolStats = false;
 let boolMic = true; 
 let numCasos = 13; 
 let boton = false;
-let irises = false; // costoso. Evaluar 
-let boolSynth = false; 
+let irises = false; // costoso. Evaluar
+let boolSynth = false;
+
+// Cronología de la pieza (modo exhibición). Única fuente de verdad de los
+// tiempos: editar aquí cambia toda la duración sin tocar score().
+// Cada fase se activa cuando `transcurso` (segundos) cruza su `inicio`.
+// titulo1 es el estado inicial (lo arma initsc0), por eso no tiene `accion`.
+const TIMELINE = [
+    { nombre: 'titulo1',  inicio: 0,   fin: 5                                                          },
+    { nombre: 'escena1',  inicio: 5,   fin: 35,  escena: 1, modoOscuro: false, accion: () => initsc1()  },
+    { nombre: 'titulo2',  inicio: 35,  fin: 40,  escena: 2,                    accion: () => titulo2()  },
+    { nombre: 'escena2',  inicio: 40,  fin: 70,  escena: 3, modoOscuro: false, accion: () => initsc2()  },
+    { nombre: 'titulo3',  inicio: 70,  fin: 75,  escena: 4,                    accion: () => titulo3()  },
+    { nombre: 'escena3',  inicio: 75,  fin: 105, escena: 5, modoOscuro: true,  accion: () => initsc3()  },
+    { nombre: 'reinicio', inicio: 105, fin: 105, escena: 6,                    accion: () => reinicio() },
+];
 
 // con boton
 
@@ -1509,106 +1523,26 @@ function selektor( sc ){
 //// iMPORTANTE2: ¿Podría hacerse con los secuenciadores de tone.js ? No se sabe
 ///////////////////////////////////////////////
 
+// Avanza la máquina de estados de escenas según la cronología en `TIMELINE`.
 function score() {
 
-    /*
-      1. titulo1   000 - 005 s
-      2. initsc1   005 - 035 s
-      3. titulo2   035 - 040 s
-      4. initsc2   040 - 070 s
-      5. titulo3   070 - 075 s
-      6. initsc3   075 - 105 s
-      7. reinicio   s 
-     */
-    
-    if(buscando){
+    if (!buscando) return;
 
-	//  Primera escena 
-	
-	if ( transcurso.toFixed() == 5 && segundo != 5 ) {
-	    //console.log("Primera Escena"); 
-	    segundo = transcurso.toFixed(); 
-	    modoOscuro = false; 
-	    escena = 1;
-	    rmsc1();
-	    rmsc2();
-	    rmsc3(); 
-	    // rmIrises(); 
-	    initsc1();
-	}
+    // Segundo entero transcurrido. `segundo` recuerda el último ya procesado
+    // para que cada fase se dispare una sola vez.
+    const t = Number(transcurso.toFixed());
+    if (t === segundo) return;
 
-	// titulo 2 Estos números podrían variar ligeramente ? 
-	
-	if ( transcurso.toFixed() == 35 && segundo != 35 ) {
-	    //console.log("Título 2");
-	    segundo = transcurso.toFixed();
-	    escena = 2; 
-	    rmsc1();
-	    rmsc2();
-	    rmsc3(); 
-	    // rmIrises();
-	    titulo2(); 
-	    
-	}
-	
-	// Segunda escena 
-    
-	if ( transcurso.toFixed() == 40 && segundo != 40 ) {
-	    //console.log("Segunda Escena"); 
-	    segundo = transcurso.toFixed();
-	    modoOscuro = false; 
-	    escena = 3;
-	    rmsc1();
-	    rmsc2();
-	    rmsc3(); 
-	    initsc2();
-	    
-	}
+    const fase = TIMELINE.find((f) => f.inicio === t && f.accion);
+    if (!fase) return;
 
-	// Tercer Título 
-
-	if ( transcurso.toFixed() == 70 && segundo != 70 ) {
-	    //console.log("Título 3");
-	    segundo = transcurso.toFixed();
-	    escena = 4; 
-	    rmsc1();
-	    rmsc2();
-	    rmsc3(); 
-	    // rmIrises();
-	    titulo3(); 
-	}
-
-	// Tercera escena 
-	
-	if ( transcurso.toFixed() == 75 && segundo != 75 ) {
-	    //console.log("Tercera Escena"); 
-	    segundo = transcurso.toFixed();
-	    modoOscuro = true;
-	    // irises = true; 
-	    escena = 5;
-	    rmsc1();
-	    rmsc2();
-	    rmsc3(); 
-	    // initIrises(); // Antes
-	    initsc3(); 
-	    
-	}
-
-	// Mientras
-
-	if ( transcurso.toFixed() == 105 && segundo != 105 ) {
-	    //console.log("Reinicio"); 
-	    segundo = transcurso.toFixed();
-	    // modoOscuro = true; 
-	    escena = 6;
-	    rmsc1();
-	    rmsc2();
-	    rmsc3();
-	    reinicio(); 
-	    // rmIrises();	    
-	}
-		
-    }
+    segundo = t;
+    if (fase.modoOscuro !== undefined) modoOscuro = fase.modoOscuro;
+    escena = fase.escena;
+    rmsc1();
+    rmsc2();
+    rmsc3();
+    fase.accion();
 }
 
 function guiFunc(){
