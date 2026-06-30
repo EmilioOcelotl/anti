@@ -290,13 +290,9 @@ let velsX = [], velsY = [], vels = [];
 let avg;
 let velarriba, velabajo, velizquierda, velderecha; 
 let trigeom = new THREE.BufferGeometry();
-let trimesh = new THREE.Mesh(); 
-let triPosiciones = [];
-let triCantidad = 880; // un parámetro que podríamoso cambiar 
-let triGeometry = [];
-let blackPlane; 
-
-let triangulos = []; 
+let trimesh = new THREE.Mesh();
+let triCantidad = 880; // un parámetro que podríamoso cambiar
+let blackPlane;
 
 let vit;
 let trimaterial; 
@@ -435,9 +431,7 @@ async function renderPrediction() {
     
     trimaterial.map.needsUpdate = true;
 
-    for(let i = 0; i < triCantidad; i++){
-	triGeometry[i].attributes.position.needsUpdate = true;
-    }
+    trigeom.attributes.position.needsUpdate = true;
     
     if (predictions.length > 0) {
 	predictions.forEach((prediction) => {
@@ -759,25 +753,20 @@ async function init() {
 	map:vit,	
     } ); 
 
-    for(let i = 0; i < 3; i++){
-	const x = Math.random() * 200 - 100;
-	const y = Math.random() * 200 - 100;
-	const z = Math.random() * 200 - 100;
-	triPosiciones.push(x, y, z); 	
+    // Geometria fusionada: un solo BufferGeometry con los triCantidad triangulos
+    // (triCantidad * 3 vertices) y un solo Mesh. Antes eran triCantidad geometrias
+    // y triCantidad meshes => triCantidad draw calls por frame; ahora es 1.
+    const triPositionArray = new Float32Array( triCantidad * 3 * 3 );
+    const triUvArray = new Float32Array( triCantidad * 3 * 2 );
+    for(let t = 0; t < triCantidad; t++){
+	triUvArray.set( [0.0, 0.0, 1.0, 0.0, 1.0, 1.0], t * 6 );
     }
-    
-    var quad_uvs =[0.0, 0.0,1.0, 0.0, 1.0, 1.0];
 
-    for(let i = 0; i < triCantidad; i++){
-	
-	triGeometry[i] = new THREE.BufferGeometry();
-	triGeometry[i].setAttribute( 'position', new THREE.Float32BufferAttribute( triPosiciones, 3 ) );
-	triGeometry[i].setAttribute( 'uv', new THREE.Float32BufferAttribute( quad_uvs, 2))
-	triGeometry[i].usage = THREE.DynamicDrawUsage; 
-	triangulos[i] = new THREE.Mesh( triGeometry[i], trimaterial  );
-	//triangulos[i].rotation.y = Math.PI*2; 
-	
-    }
+    trigeom = new THREE.BufferGeometry();
+    trigeom.setAttribute( 'position', new THREE.BufferAttribute( triPositionArray, 3 ) );
+    trigeom.setAttribute( 'uv', new THREE.BufferAttribute( triUvArray, 2 ) );
+    trigeom.attributes.position.usage = THREE.DynamicDrawUsage;
+    trimesh = new THREE.Mesh( trigeom, trimaterial );
 
     /*
     for(let i = 0; i < triCantidad; i++){
@@ -831,9 +820,7 @@ function initsc0() {
 	scene.background = new THREE.Color(0x000000);
 	modoOscuro = true;
 
-	for(let i = 0; i < triCantidad; i++){
-	    scene.remove(triangulos[i]); 
-	}
+	scene.remove(trimesh);
 
 	if(boolText){
     	    chtexto(
@@ -928,15 +915,7 @@ function titulo1(){
     }
     */
 
-    let tritotal = 0; 
-    if (predictions.length > 0) {
-	predictions.forEach((prediction) => {
-	    for(let i = 0; i < triCantidad; i++){	    
-		scene.remove(triangulos[tritotal]);
-		tritotal++; 
-	    }
-	})
-    }
+    scene.remove(trimesh);
     
 }
 
@@ -1000,20 +979,10 @@ function initsc1() {
     */
 
     /*
-    for(let i = 0; i < triCantidad; i++){	    
-	scene.add(triangulos[i]);
-    }
+    scene.add(trimesh);
     */
 
-    let tritotal = 0; 
-    if (predictions.length > 0) {
-	predictions.forEach((prediction) => {
-	    for(let i = 0; i < triCantidad; i++){	    
-		scene.add(triangulos[tritotal]);
-		tritotal++; 
-	    }
-	})
-    }
+    scene.add(trimesh);
 
     
     pitchShift.pitch = -4 ; // cambios dinámicos para el futuro 
@@ -1040,18 +1009,20 @@ function animsc1() {
     let triconta = 0;
 
     if (predictions.length > 0) {
-	predictions.forEach((prediction) => {	
+	const triPos = trigeom.attributes.position.array;
+	predictions.forEach((prediction) => {
 	    arre = arre.flat(2);
-	    for(let j = 0; j < triCantidad; j++){	
+	    for(let j = 0; j < triCantidad; j++){
 		let d = perlin.noise(
 		    arre[triconta*3] * perlinValue + time2,
 		    arre[(triconta*3)+1] * perlinValue + time2,
-		    arre[(triconta*3)+2] * perlinValue + time2) *  0.125; 
+		    arre[(triconta*3)+2] * perlinValue + time2) *  0.125;
 		for(let i = 0; i < 3; i++){
-	    triGeometry[j].attributes.position.setX( i, (arre[triconta*3] * 0.12 -wCor)*(1.1+d) ); 
-		    triGeometry[j].attributes.position.setY( i, (arre[(triconta*3)+1] * 0.12 - hCor) * (1.1+d) );
-		    triGeometry[j].attributes.position.setZ( i, (arre[(triconta*3)+2] * 0.05) * (1+d) );
-   		    triconta++; 
+		    const base = triconta * 3;
+		    triPos[base]     = (arre[base] * 0.12 - wCor) * (1.1 + d);
+		    triPos[base + 1] = (arre[base + 1] * 0.12 - hCor) * (1.1 + d);
+		    triPos[base + 2] = (arre[base + 2] * 0.05) * (1 + d);
+		    triconta++;
 		}
 	    }
 	})
@@ -1113,9 +1084,7 @@ function titulo2(){
     text.material.color = new THREE.Color(0xffffff); 
     cuboGBool = false;
 
-    for(let i = 0; i < triCantidad; i++){	    
-	scene.remove(triangulos[i]);
-    }
+    scene.remove(trimesh);
  
     pitchShift.pitch = -4 ; // cambios dinámicos para el futuro tal vez con una secuencia    
     
@@ -1188,9 +1157,7 @@ function initsc2() {
     }
     */
 
-    for(let i = 0; i < triCantidad; i++){	    
-	scene.add(triangulos[i]);
-    }
+    scene.add(trimesh);
 
 }
 
@@ -1207,6 +1174,7 @@ function animsc2() {
     arre = arre.flat(2);
     let triconta = 0;
     var time2 = Date.now() * 0.0005;
+    const triPos = trigeom.attributes.position.array;
     
     for(let j = 0; j < triCantidad; j++){	
 	
@@ -1216,9 +1184,10 @@ function animsc2() {
 	    arre[(triconta*3)+2] * perlinValue + time2) *  0.5; 
 	
 	for(let i = 0; i < 3; i++){
-	    triGeometry[j].attributes.position.setX( i, (arre[triconta*3] * 0.12 -wCor)*(1.2+d) ); 
-	    triGeometry[j].attributes.position.setY( i, (arre[(triconta*3)+1] * 0.12 - hCor) * (1.2+d) );
-	    triGeometry[j].attributes.position.setZ( i, (arre[(triconta*3)+2] * 0.05) * (1.2*d) );
+	    const base = triconta * 3;
+	    triPos[base]     = (arre[base] * 0.12 - wCor) * (1.2 + d);
+	    triPos[base + 1] = (arre[base + 1] * 0.12 - hCor) * (1.2 + d);
+	    triPos[base + 2] = (arre[base + 2] * 0.05) * (1.2 * d);
    	    triconta++; 
 	}
     }
@@ -1284,9 +1253,7 @@ function titulo3(){
     text.material.color = new THREE.Color(0xffffff); 
     cuboGBool = false; 
 
-    for(let i = 0; i < triCantidad; i++){	    
-	scene.remove(triangulos[i]);
-    }
+    scene.remove(trimesh);
     
     pitchShift.pitch = -4 ; // cambios dinámicos para el futuro 
    
@@ -1350,9 +1317,7 @@ function initsc3() {
 	});
     }
 
-    for(let i = 0; i < triCantidad; i++){	    
-	scene.add(triangulos[i]);
-    }
+    scene.add(trimesh);
 
 }
 
@@ -1372,6 +1337,7 @@ function animsc3() {
     arre = arre.flat(2);
     let triconta = 0;
     var time2 = Date.now() * 0.0005;
+    const triPos = trigeom.attributes.position.array;
     
     for(let j = 0; j < triCantidad; j++){	
 	
@@ -1381,9 +1347,10 @@ function animsc3() {
 	    arre[(triconta*3)+2] * perlinValue + time2) *  0.5; 
 	
 	for(let i = 0; i < 3; i++){
-	    triGeometry[j].attributes.position.setX( i, (arre[triconta*3] * 0.12 -wCor)*(1.2+d) ); 
-	    triGeometry[j].attributes.position.setY( i, (arre[(triconta*3)+1] * 0.12 - hCor) * (1.2+d) );
-	    triGeometry[j].attributes.position.setZ( i, (arre[(triconta*3)+2] * 0.05) * (1.2*d) );
+	    const base = triconta * 3;
+	    triPos[base]     = (arre[base] * 0.12 - wCor) * (1.2 + d);
+	    triPos[base + 1] = (arre[base + 1] * 0.12 - hCor) * (1.2 + d);
+	    triPos[base + 2] = (arre[base + 2] * 0.05) * (1.2 * d);
    	    triconta++; 
 	}
     }

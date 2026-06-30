@@ -37,6 +37,14 @@
   "browser": {
     "crypto": false
   },
+  "staticFiles": {
+    "staticPath": [
+      { "staticPath": "fonts", "staticOutDir": "fonts" },
+      { "staticPath": "txt", "staticOutDir": "txt" },
+      { "staticPath": "img", "staticOutDir": "img" },
+      { "staticPath": "audio", "staticOutDir": "audio" }
+    ]
+  },
   "devDependencies": {
     "@babel/core": "^7.7.5",
     "@babel/plugin-transform-runtime": "^7.7.6",

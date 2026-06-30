@@ -2,4 +2,5 @@
 dist
 node_modules
 CLAUDE.md
+CONTEXTO_SESION.md
 .cache
