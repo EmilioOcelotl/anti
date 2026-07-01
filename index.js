@@ -287,7 +287,11 @@ let vidGeometry;
 let planeVideoOrg;
 
 let exBool = true;
-// let cotiBool = false; 
+// Modo libre (default): la pieza no avanza por la cronología de exhibición.
+// El usuario explora/ofusca sin tiempo determinado. Exhibición dormida: el
+// TIMELINE y score() siguen intactos, pero score() sale temprano si `libre`.
+let libre = true;
+// let cotiBool = false;
 let escenasFolder = []; 
 let objEsc1, objEsc2; 
 
@@ -878,9 +882,19 @@ function initsc0() {
 	matLite.map = vit; 
 	matLite.blending = THREE.AdditiveBlending; 
 	// respawn.start(); // esto antes hacia ruido  
-	escena = 0;
-	titulo1(); 
-	transcurso = 0; 
+	// Modo libre: entrar directo a la escena de ofuscación persistente
+	// (escena 1) en vez del título; la cronología (score/TIMELINE) queda
+	// dormida y el usuario se queda aquí sin auto-avanzar ni reiniciar.
+	if (libre) {
+		escena = 1;
+		scene.background = vit;
+		selektor(Math.floor(Math.random() * numCasos));
+		initsc1();
+	} else {
+		escena = 0;
+		titulo1();
+	}
+	transcurso = 0;
 	inicio = Date.now();
 	segundo = 0;
 	modoOscuro = false;
@@ -1540,6 +1554,9 @@ function selektor( sc ){
 
 // Avanza la máquina de estados de escenas según la cronología en `TIMELINE`.
 function score() {
+
+    // Modo libre: cronología de exhibición suspendida (ver `libre`).
+    if (libre) return;
 
     if (!buscando) return;
 
