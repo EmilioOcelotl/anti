@@ -186,6 +186,21 @@ left:0;
 right:0;
 
 }
+
+#loaderText, #buscandoText {
+position: absolute;
+left: 0;
+width: 100%;
+text-align: center;
+color: #fff;
+font-family: Monospace;
+font-size: 14px;
+pointer-events: none;
+user-select: none;
+z-index: 3;
+}
+#loaderText { top: 58%; }
+#buscandoText { top: 80%; }
 img {
 max-width: 25%;
 max-height: 25%;
@@ -218,11 +233,14 @@ right:0;
 </video>
 
 <div id="info">
-  4 N T 1</br>
-  Emilio Ocelotl</br></br>
-  La ofuscación como motivo, la escritura como rodeo</br>
-  Es necesaria una cámara y ortorgar permisos</br>
-  Se recomienda el uso de audífonos
+  4 N T 1<br>
+  Emilio Ocelotl<br><br>
+  La ofuscación como motivo, la escritura como rodeo.<br><br>
+  Esta pieza usa tu cámara y tu micrófono:<br>
+  tu rostro se deforma, tu sonido se transforma, en vivo.<br>
+  Una composición de ~1:45 que se repite.<br><br>
+  Todo ocurre en tu navegador. Nada se graba, se guarda ni se envía.<br>
+  Usa audífonos.
 </div>
 
 <div id="overlay">
@@ -259,6 +277,8 @@ Your browser does not support the audio element.
 <img src="img/spark1.png" alt="spark" style="display:none">
        
 <div id="loaderHTML" class="loader" style="display:none"></div>
+<div id="loaderText" style="display:none">Preparando la detección facial…</div>
+<div id="buscandoText" style="display:none">Acerca tu rostro a la cámara</div>
 
 <canvas id="myCanvas" width="400px" height="400px"></canvas>
 

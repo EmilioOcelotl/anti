@@ -110,7 +110,7 @@ loader.load(
 );
 
 let outline, out, respawn, line; 
-let freeverb, distortion, pitchShift, mic, openmic, panner; 
+let freeverb, distortion, pitchShift, openmic, panner;
 
 /////////////////////
 
@@ -163,6 +163,8 @@ let xMid;
 let model, videoWidth, videoHeight, video;
 
 const loaderHTML = document.getElementById('loaderHTML');
+const loaderText = document.getElementById('loaderText');
+const buscandoText = document.getElementById('buscandoText');
 const startButton = document.getElementById( 'startButton' );
 const myProgress = document.getElementById( 'myProgress' );
 const myBar = document.getElementById( 'myBar' );
@@ -180,6 +182,7 @@ let materialVideo;
 let escena = 0;
 let rendereo;
 let buscando = false;
+let rostroVisto = false; // se vuelve true al detectar el primer rostro (guía de onboarding)
 let player, antiKick;
 let seq1, seq2, seq3;
 let flow, curve, curveHandles = [];
@@ -330,6 +333,7 @@ let silueta;
 
 function mostrarErrorCamara(err) {
     loaderHTML.style.display = 'none';
+    loaderText.style.display = 'none';
     let msg;
     if (err.name === 'NotFoundError' || err.name === 'DeviceNotFoundError') {
 	msg = 'No se encontró ninguna cámara.<br>Conecta una cámara y recarga la página.';
@@ -382,7 +386,9 @@ async function setupCamera() {
 
     try {
 	stream = await navigator.mediaDevices.getUserMedia({
-	    'audio': false,
+	    // Cámara y micrófono en un solo permiso: el audio alimenta a Tone
+	    // (ver sonido()), evitando un segundo prompt por el micrófono.
+	    'audio': true,
 	    'video': {
 		facingMode: 'user',
 		width: mobile ? undefined : camWidth,
@@ -396,7 +402,10 @@ async function setupCamera() {
     }
 
     video.srcObject = stream;
-    let {width, height} = stream.getTracks()[0].getSettings();
+    // El stream ahora trae audio; silenciamos el <video> para que el micrófono
+    // no se reproduzca crudo por las bocinas (solo debe oírse vía Tone).
+    video.muted = true;
+    let {width, height} = stream.getVideoTracks()[0].getSettings();
     console.log('Resolución:'+ `${width}x${height}`); // 640x480
     return new Promise((resolve) => {
 	video.onloadedmetadata = () => {
@@ -446,7 +455,12 @@ async function renderPrediction() {
     trimaterial.map.needsUpdate = true;
 
     trigeom.attributes.position.needsUpdate = true;
-    
+
+    // Guía de onboarding: pide acercar el rostro solo hasta la primera detección;
+    // una vez visto el rostro no reaparece aunque la cara salga entre escenas.
+    if (predictions.length > 0) rostroVisto = true;
+    buscandoText.style.display = (buscando && !rostroVisto) ? 'block' : 'none';
+
     if (predictions.length > 0) {
 	predictions.forEach((prediction) => {
 
@@ -661,8 +675,9 @@ async function init() {
     fonca.remove();
     container = document.createElement( 'div' );
     document.body.appendChild( container );
-    document.body.style.cursor = 'none'; 
+    // Modo web abierta: el cursor permanece visible (antes se ocultaba para kiosko).
     loaderHTML.style.display = 'block';
+    loaderText.style.display = 'block';
 
     await setupCamera();
     
@@ -1781,6 +1796,7 @@ async function detonar() {
     }
     
     loaderHTML.style.display = 'none';
+    loaderText.style.display = 'none';
 
     console.log('██╗  ██╗███╗   ██╗████████╗ ██╗\n██║  ██║████╗  ██║╚══██╔══╝███║\n███████║██╔██╗ ██║   ██║   ╚██║\n╚════██║██║╚██╗██║   ██║    ██║\n     ██║██║ ╚████║   ██║    ██║\n     ╚═╝╚═╝  ╚═══╝   ╚═╝    ╚═╝'); // fps();
     inicio = Date.now();
@@ -2042,15 +2058,14 @@ hira.shift();
     pitchShift.windowSize = 0.2;
     pitchShift.sampleTIme = 0.85; 
 
-    mic = new Tone.UserMedia(2);
-
     panner = new Tone.Panner(0).connect(pitchShift) ;
-    
-    if(boolMic){
-	mic.open().then(() => {
-	    openmic = true;
-	    mic.connect( panner ); 
-	});
+
+    if(boolMic && stream){
+	// Reutiliza el track de audio del stream ya autorizado (cámara+micrófono)
+	// en lugar de abrir el micrófono por separado con Tone.UserMedia.
+	const micSource = Tone.getContext().rawContext.createMediaStreamSource(stream);
+	Tone.connect(micSource, panner);
+	openmic = true;
     }
 
 /*
