@@ -1,4 +1,4 @@
-![portada](https://github.com/EmilioOcelotl/4NT1/blob/main/img/antiyo.png)
+![portada](https://github.com/EmilioOcelotl/anti/blob/main/img/antiyo.png)
 
 # ANT1
 
@@ -8,7 +8,7 @@ Anti es un llamado a la responsabilidad de los datos, al compromiso y el cuidado
 
 [Modos](https://emilioocelotl.github.io/anti/)
 
-[Ejecución](https://github.com/EmilioOcelotl/4NT1/tree/main/ejecucion.md)
+[Ejecución](https://github.com/EmilioOcelotl/anti/tree/main/ejecucion.md)
 
 [Bitácora](https://github.com/EmilioOcelotl/anti/tree/main/bitacora) 
 
@@ -86,6 +86,30 @@ img/         imágenes
 - Los 880 triángulos se dibujan como **un solo `BufferGeometry` fusionado** (1 draw call por cuadro en vez de 880); las posiciones se actualizan escribiendo directo al array de vértices en cada `animsc*`.
 - La resolución de la textura (`textureSize`) se reduce automáticamente en dispositivos móviles.
 - `TIMELINE` centraliza toda la cronología: cambiar la duración de la pieza es editar un solo array.
+
+## Cámara virtual con OBS Studio
+
+Anti puede usarse como fuente de video en videollamadas (Zoom, Meet, Jitsi, etc.) enviando su render como si fuera una cámara conectada a la computadora. [OBS Studio](https://obsproject.com/) es la vía multiplataforma (Linux, macOS y Windows) más sencilla.
+
+**Requisitos**
+
+- OBS Studio instalado.
+- Anti corriendo en el navegador: la versión publicada (enlace **Modos** al inicio de este README) o en local con `npm run watch`.
+
+**Pasos**
+
+1. Abre Anti en el navegador y da clic para iniciar; permite el acceso a **cámara y micrófono**. Ponlo en pantalla completa (`F11`) para evitar barras y bordes.
+2. En OBS, agrega una fuente:
+   - **Captura de ventana** y elige la ventana del navegador, o
+   - **Captura de pantalla / monitor** si prefieres la pantalla completa.
+3. Ajusta el encuadre de la fuente dentro del lienzo de OBS.
+4. En el panel **Controles**, haz clic en **Iniciar cámara virtual**.
+5. En la app de la videollamada, selecciona **OBS Virtual Camera** como cámara.
+
+**Notas**
+
+- Esto envía solo el **video**. Para mandar también el audio procesado (micrófono con pitch/distorsión de Tone.js) hay que rutear la salida de audio del navegador hacia la app de la llamada, lo cual depende del sistema operativo (en Linux, JACK o PipeWire). Ver [`manual.md`](manual.md).
+- Como alternativa más ligera, solo para Linux, se puede usar `v4l2loopback` + `ffmpeg`. Ver [`ejecucion.md`](ejecucion.md).
 
 ## Escritura
 
