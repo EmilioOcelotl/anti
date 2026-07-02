@@ -259,7 +259,9 @@ var voz = new Tone.Players({
 */ 
 
 let perlinValue;
-let perlinAmp;
+// Amplitud de deformación de los triángulos en animsc1 (0.125 = la amplitud
+// histórica, que estaba hardcodeada). En modo libre se sobreescribe por frame.
+let perlinAmp = 0.125;
 let cuboGBool = false;
 let loopOf, loopRod, loopTxt, loopTres; 
 
@@ -291,6 +293,16 @@ let exBool = true;
 // El usuario explora/ofusca sin tiempo determinado. Exhibición dormida: el
 // TIMELINE y score() siguen intactos, pero score() sale temprano si `libre`.
 let libre = true;
+// Fase 1 (modo libre) — calibración de la señal de movimiento. avg se suaviza
+// con media móvil exponencial y se normaliza a [0,1]; estas constantes
+// dependen de FPS y resolución, se afinan con cámara.
+const AVG_SUAVIZADO = 0.98;  // fracción del avg previo que se conserva por frame
+const AVG_PISO = 0.4;        // avg (px/frame) por debajo del cual es jitter de FaceMesh, no movimiento
+const AVG_MAX = 5;           // avg (px/frame) que cuenta como movimiento máximo
+const PERLIN_QUIETO = 0.003; // perlinValue (frecuencia espacial del ruido) con el rostro quieto
+const PERLIN_MOVIDO = 0.12;  // perlinValue en movimiento máximo
+const AMP_QUIETO = 0.06;     // perlinAmp (amplitud de deformación) con el rostro quieto
+const AMP_MOVIDO = 0.12;     // perlinAmp en movimiento máximo
 // let cotiBool = false;
 let escenasFolder = []; 
 let objEsc1, objEsc2; 
@@ -308,8 +320,8 @@ let keyactualY = [];
 let keyanteriorY = [];
 let velsX = [], velsY = [], vels = [];
 
-let avg;
-let velarriba, velabajo, velizquierda, velderecha; 
+let avg = 0;
+let velarriba, velabajo, velizquierda, velderecha;
 let trigeom = new THREE.BufferGeometry();
 let trimesh = new THREE.Mesh();
 let triCantidad = 880; // un parámetro que podríamoso cambiar
@@ -620,48 +632,36 @@ async function renderPrediction() {
 	}
     }
 
-    /*
-      let oldAvg;
-      
-    for(let i = 0; i < keypoints.length; i++){
+    // Señal de movimiento (Fase 1, modo libre): velocidad promedio de los
+    // keypoints entre frames → avg suavizado → perlinValue. Si el rostro sale
+    // del cuadro, keypoints se queda con el último frame → vels caen a 0 y
+    // avg decae solo ("quieto se aquieta").
+    if (libre && keypoints.length > 0) {
+	for (let i = 0; i < keypoints.length; i++) {
+	    keyanteriorX[i] = keyactualX[i];
+	    keyactualX[i] = keypoints[i][0];
+	    // || 0 cubre el primer frame (keyanterior undefined → NaN)
+	    velsX[i] = Math.abs(keyanteriorX[i] - keyactualX[i]) || 0;
 
-	keyanteriorX[i] = keyactualX[i];
-	keyactualX[i] = keypoints[i][0];
-	velsX[i] = Math.abs(keyanteriorX[i] - keyactualX[i]);
-	
-	keyanteriorY[i] = keyactualY[i];
-	keyactualY[i] = keypoints[i][1];
-	velsY[i] = Math.abs(keyanteriorY[i] - keyactualY[i]);
+	    keyanteriorY[i] = keyactualY[i];
+	    keyactualY[i] = keypoints[i][1];
+	    velsY[i] = Math.abs(keyanteriorY[i] - keyactualY[i]) || 0;
 
-	vels[i] = (velsX[i] + velsY[i]) / 2;
-	// aqui va el promedio de velocidades por punto 
-	
+	    vels[i] = (velsX[i] + velsY[i]) / 2;
+	}
+	const cruda = (vels.reduce((a, b) => a + b, 0) / vels.length) || 0;
+	avg = avg * AVG_SUAVIZADO + cruda * (1 - AVG_SUAVIZADO);
+	// normalizado [0,1] descontando el piso de jitter
+	const movimiento = Math.min(Math.max((avg - AVG_PISO) / (AVG_MAX - AVG_PISO), 0), 1);
+	perlinValue = PERLIN_QUIETO + (PERLIN_MOVIDO - PERLIN_QUIETO) * movimiento;
+	perlinAmp = AMP_QUIETO + (AMP_MOVIDO - AMP_QUIETO) * movimiento;
     }
 
-    const sumX = velsX.reduce((a, b) => a + b, 0);
-    const avgX = (sumX / velsX.length) || 0;
-
-    const sumY = velsY.reduce((a, b) => a + b, 0);
-    const avgY = (sumY / velsY.length) || 0;
-   
-    
-    const sum = vels.reduce((a, b) => a + b, 0);
-    oldAvg = avg; 
-    avg = (sum / vels.length) || 0;
-
-    */
-    
-    //sphereNuevo.scale.x.lerp(avg/4, 0.1) ; // Ñep 
-    
     // arriba 10
     // abajo 152
     // izq 234
     // der 454
-    
-    // promedio de las velocidades de todos los puntos
     // promedios dependiendo de puntos específicos
-    
-   // console.log( avg / 100 ); // Promedio general 
 
     requestAnimationFrame(renderPrediction);
 };
@@ -986,7 +986,9 @@ function initsc1() {
     irises = false;    
     afterimagePass.uniforms['damp'].value = 0.85;
     perlinValue = 0.03;
-    perlinAmp = 4;
+    // Antes 4, pero nunca se leía; ahora animsc1 la usa como amplitud real:
+    // 0.125 conserva el aspecto original de la escena en exhibición.
+    perlinAmp = 0.125;
     scene.add( planeVideo);
     planeVideo.material.opacity = 1; 
     // scene.remove( planeVideo ); 
@@ -1059,7 +1061,7 @@ function animsc1() {
 		let d = perlin.noise(
 		    arre[triconta*3] * perlinValue + time2,
 		    arre[(triconta*3)+1] * perlinValue + time2,
-		    arre[(triconta*3)+2] * perlinValue + time2) *  0.125;
+		    arre[(triconta*3)+2] * perlinValue + time2) * perlinAmp;
 		for(let i = 0; i < 3; i++){
 		    const base = triconta * 3;
 		    triPos[base]     = (arre[base] * 0.12 - wCor) * (1.1 + d);
