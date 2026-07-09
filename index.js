@@ -19,6 +19,10 @@ import {TTFLoader} from './jsm/loaders/TTFLoader.js';
 import {AfterimagePass} from './jsm/postprocessing/AfterimagePass.js';
 import {ImprovedNoise} from './jsm/math/ImprovedNoise.js';
 import { GUI } from './jsm/libs/dat.gui.module.js';
+// Import profundo a propósito: el index de treslib reexporta clases que
+// importan hydra-synth/three (peerDeps que anti no cubre); GrainEngine es
+// autocontenido y no arrastra nada al build de Parcel.
+import { GrainEngine } from 'treslib/src/GrainEngine.js';
 // const TWEEN = require('@tweenjs/tween.js')
 
 ///////////////////// Variables importantes
@@ -303,6 +307,21 @@ const PERLIN_QUIETO = 0.003; // perlinValue (frecuencia espacial del ruido) con 
 const PERLIN_MOVIDO = 0.12;  // perlinValue en movimiento máximo
 const AMP_QUIETO = 0.06;     // perlinAmp (amplitud de deformación) con el rostro quieto
 const AMP_MOVIDO = 0.12;     // perlinAmp en movimiento máximo
+// Fase 2 — acumulador `ofuscacion` ∈ [0,1]: integra movimiento, decae al
+// detenerse, efímero (nunca se guarda). El cuerpo es el reloj.
+const OFU_SUBIDA = 0.004;    // aporte por frame a movimiento máximo (~4 s sostenidos para llegar a 1)
+const OFU_BAJADA = 0.001;    // decaimiento por frame (~17 s de quietud para volver a 0)
+const DAMP_BASE = 0.85;      // afterimage en reposo (valor histórico de initsc1)
+const DAMP_TOPE = 0.96;      // afterimage en máxima ofuscación (trazas largas, sin white-out)
+const OPACIDAD_PISO = 0.15;  // opacidad mínima del video: la cámara se difumina pero no desaparece
+// Fase 2 — lecho granular (Capa A, treslib). `ofuscacion` gobierna densidad y
+// nivel; el pointer recorre la muestra conforme te ofuscas; el movimiento
+// instantáneo agrega jitter de posición/pitch.
+const GRANO_MUESTRA = 0;     // muestra inicial de audio/fondos/ (el recorrido por las 16 llega en Fase 4)
+const GRANO_VENTANA = 0.08;  // windowSize (s) de cada grano
+const GRANO_AMP_BASE = 0.1;  // nivel en reposo (granos escasos, nunca silencio total con rostro)
+const GRANO_AMP_TOPE = 0.7;  // nivel en máxima ofuscación
+const GRANO_OVERLAPS_MAX = 8;// granos simultáneos en máxima ofuscación (mínimo 1)
 // let cotiBool = false;
 let escenasFolder = []; 
 let objEsc1, objEsc2; 
@@ -321,6 +340,8 @@ let keyanteriorY = [];
 let velsX = [], velsY = [], vels = [];
 
 let avg = 0;
+let ofuscacion = 0;     // acumulador del modo libre (Fase 2), efímero
+let grainEngine = null; // lecho granular treslib (Capa A), null hasta cargar la muestra
 let velarriba, velabajo, velizquierda, velderecha;
 let trigeom = new THREE.BufferGeometry();
 let trimesh = new THREE.Mesh();
@@ -655,6 +676,24 @@ async function renderPrediction() {
 	const movimiento = Math.min(Math.max((avg - AVG_PISO) / (AVG_MAX - AVG_PISO), 0), 1);
 	perlinValue = PERLIN_QUIETO + (PERLIN_MOVIDO - PERLIN_QUIETO) * movimiento;
 	perlinAmp = AMP_QUIETO + (AMP_MOVIDO - AMP_QUIETO) * movimiento;
+
+	// Acumulador de ofuscación (Fase 2): integra el movimiento y decae
+	// al detenerse. Gobierna la capa lenta: trazas, opacidad del video
+	// y densidad/nivel del lecho granular.
+	ofuscacion = Math.min(1, Math.max(0, ofuscacion + movimiento * OFU_SUBIDA - OFU_BAJADA));
+
+	afterimagePass.uniforms['damp'].value = DAMP_BASE + (DAMP_TOPE - DAMP_BASE) * ofuscacion;
+	// La cámara se difumina con la ofuscación pero nunca desaparece
+	// (los triángulos siguen: presencia dispersa, no borrada).
+	planeVideo.material.opacity = 1 - (1 - OPACIDAD_PISO) * ofuscacion;
+
+	if (grainEngine) {
+	    grainEngine.setPointer(ofuscacion); // el acumulador recorre la muestra
+	    grainEngine.setOverlaps(1 + (GRANO_OVERLAPS_MAX - 1) * ofuscacion);
+	    grainEngine.setMasterAmp(GRANO_AMP_BASE + (GRANO_AMP_TOPE - GRANO_AMP_BASE) * ofuscacion);
+	    grainEngine.setParamAtTime('randomPosition', movimiento);
+	    grainEngine.setParamAtTime('randomPitch', movimiento * 0.5);
+	}
     }
 
     // arriba 10
@@ -1942,6 +1981,31 @@ function loadFont(){
     } );
 }
 
+// Capa A (Fase 2): carga una muestra de fondos/ y arranca el motor granular
+// de treslib sobre el mismo AudioContext que ya usa Tone (un solo contexto,
+// mismo permiso). El motor nace escaso y quieto; el bloque de movimiento de
+// renderPrediction lo gobierna por frame vía `ofuscacion` y `movimiento`.
+async function initGranular(){
+    try {
+	const ctx = Tone.getContext().rawContext;
+	const resp = await fetch('audio/fondos/' + GRANO_MUESTRA + '.mp3');
+	const datos = await resp.arrayBuffer();
+	const buffer = await ctx.decodeAudioData(datos);
+	grainEngine = new GrainEngine(ctx, buffer, {
+	    pointer: 0,
+	    rate: 1,
+	    overlaps: 1,
+	    windowSize: GRANO_VENTANA,
+	});
+	grainEngine.setMasterAmp(GRANO_AMP_BASE);
+	grainEngine.connect(ctx.destination);
+	grainEngine.start();
+    } catch (err) {
+	// Sin lecho granular la pieza sigue (solo visual); no es fatal.
+	console.warn('Lecho granular no disponible:', err);
+    }
+}
+
 function sonido(){
 
     
@@ -1966,7 +2030,15 @@ function sonido(){
 
     fondos.volume.value = -6;
 
-// Textos generales 
+    // Modo libre: el lecho granular (Capa A) sustituye a los fondos por
+    // sorteo. Los loops de abajo siguen vivos solo por el texto que
+    // disparan (hasta Fase 3); sus fondos quedan mudos.
+    if (libre) {
+	fondos.mute = true;
+	initGranular();
+    }
+
+// Textos generales
 
 loopOf = new Tone.Loop((time) => {
     if(boolText){

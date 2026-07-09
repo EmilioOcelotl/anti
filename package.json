@@ -2,13 +2,11 @@
   "name": "anti",
   "version": "0.0.1",
   "description": "",
-  "main": "index.js",
   "license": "Apache-2.0",
   "private": true,
-  "engines": {
-    "node": ">=8.9.0"
-  },
+  "browserslist": "> 0.5%, last 2 versions, not dead",
   "dependencies": {
+    "@mediapipe/face_detection": "^0.4.1646425229",
     "@mediapipe/face_mesh": "~0.4.0",
     "@tensorflow-models/face-detection": "~1.0.0",
     "@tensorflow-models/face-landmarks-detection": "^1.0.6",
@@ -24,39 +22,46 @@
     "stats.js": "^0.17.0",
     "three": "^0.131.3",
     "tone": "^14.7.77",
+    "treslib": "^1.10.0",
     "tweenjs": "^1.0.2"
   },
   "scripts": {
     "watch": "cross-env NODE_ENV=development parcel index.html --no-hmr --open",
-    "build": "cross-env NODE_ENV=production parcel build index.html --public-url ./ && cp -r audio dist && cp -r img dist && cp -r fonts dist && cp -r txt dist",
+    "build": "cross-env NODE_ENV=production parcel build index.html --public-url ./",
     "lint": "eslint .",
     "link-local": "yalc link @tensorflow-models/face-landmarks-detection",
-    "deployar": "cross-env NODE_ENV=production parcel build anti/index.html ./",
-    "limpiar": "sudo rm -r dist node_modules"
+    "limpiar": "rm -rf dist .parcel-cache node_modules"
   },
-  "browser": {
+  "alias": {
     "crypto": false
   },
-  "staticFiles": {
-    "staticPath": [
-      { "staticPath": "fonts", "staticOutDir": "fonts" },
-      { "staticPath": "txt", "staticOutDir": "txt" },
-      { "staticPath": "img", "staticOutDir": "img" },
-      { "staticPath": "audio", "staticOutDir": "audio" }
-    ]
-  },
+  "staticFiles": [
+    {
+      "staticPath": "fonts",
+      "staticOutPath": "fonts"
+    },
+    {
+      "staticPath": "txt",
+      "staticOutPath": "txt"
+    },
+    {
+      "staticPath": "img",
+      "staticOutPath": "img"
+    },
+    {
+      "staticPath": "audio",
+      "staticOutPath": "audio"
+    }
+  ],
   "devDependencies": {
-    "@babel/core": "^7.7.5",
-    "@babel/plugin-transform-runtime": "^7.7.6",
-    "@babel/preset-env": "^7.7.6",
-    "babel-plugin-external-helpers": "^6.22.0",
-    "babel-preset-env": "^1.7.0",
+    "buffer": "^6.0.3",
     "clang-format": "~1.2.2",
     "cross-env": "^5.2.0",
     "eslint": "^4.19.1",
     "eslint-config-google": "^0.9.1",
-    "parcel-bundler": "1.12.5",
-    "parcel-plugin-static-files-copy": "^2.5.1",
+    "parcel": "^2.16.4",
+    "parcel-reporter-static-files-copy": "^1.5.3",
+    "process": "^0.11.10",
     "yalc": "~1.0.0-pre.50"
   },
   "eslintConfig": {
