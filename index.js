@@ -9,7 +9,6 @@ import * as tf from '@tensorflow/tfjs-core';
 import '@tensorflow/tfjs-backend-webgl';
 import * as THREE from 'three';
 import {TRIANGULATION} from './js/triangulation';
-import * as Tone from 'tone';
 import Stats from 'stats.js';
 import {EffectComposer} from './jsm/postprocessing/EffectComposer.js';
 import {RenderPass} from './jsm/postprocessing/RenderPass.js';
@@ -31,14 +30,14 @@ import { GrainSequencer } from 'treslib/src/GrainSequencer.js';
 let boolText = true; 
 let boolGui = false; 
 let boolStats = false; 
-// Mic suspendido (2026-07-09): evita retroalimentación en las pruebas de la
-// Capa A (solo muestras + granulador). La cadena panner→pitchShift→distortion
-// queda construida pero sin entrada; Fase 5 la sustituye por voz granulada.
-let boolMic = false;
+// M4: el mic lo gobierna el botón visible (#micButton), apagado por defecto
+// — evita retroalimentación y hace explícito el gesto de ceder la voz. Hoy
+// solo gobierna el estado; M5 le conecta la voz granulada
+// (micSource → AudioBufferRecorder → GrainEngine).
+let micActivo = false;
 let numCasos = 13; 
 let boton = false;
 let irises = false; // costoso. Evaluar
-let boolSynth = false;
 
 // Cronología de la pieza (modo exhibición). Única fuente de verdad de los
 // tiempos: editar aquí cambia toda la duración sin tocar score().
@@ -56,10 +55,19 @@ const TIMELINE = [
 
 // con boton
 
-document.querySelector('button').addEventListener('click', async () => {
-    // console.log('audio is ready')   
-    await Tone.start();   
+document.querySelector('#startButton').addEventListener('click', async () => {
+    // M4: el gesto del usuario desbloquea el AudioContext propio (antes Tone.start()).
+    await audioCtx().resume();
+    micButton.style.display = 'block';
     init();
+})
+
+// M4: botón de mic, apagado por defecto. Hoy solo gobierna `micActivo`;
+// M5 conecta/desconecta aquí la voz granulada.
+const micButton = document.getElementById('micButton');
+micButton.addEventListener('click', () => {
+    micActivo = !micActivo;
+    micButton.textContent = micActivo ? 'mic encendido' : 'mic apagado';
 })
 
 let detector; 
@@ -118,7 +126,6 @@ loader.load(
 );
 
 let outline, out, respawn, line; 
-let freeverb, distortion, pitchShift, openmic, panner;
 
 /////////////////////
 
@@ -454,8 +461,9 @@ async function setupCamera() {
 
     try {
 	stream = await navigator.mediaDevices.getUserMedia({
-	    // Cámara y micrófono en un solo permiso: el audio alimenta a Tone
-	    // (ver sonido()), evitando un segundo prompt por el micrófono.
+	    // Cámara y micrófono en un solo permiso, para evitar un segundo
+	    // prompt: el track de audio queda en reserva para la voz granulada
+	    // de M5 (se activa con el botón de mic, apagado por defecto).
 	    'audio': true,
 	    'video': {
 		facingMode: 'user',
@@ -470,8 +478,8 @@ async function setupCamera() {
     }
 
     video.srcObject = stream;
-    // El stream ahora trae audio; silenciamos el <video> para que el micrófono
-    // no se reproduzca crudo por las bocinas (solo debe oírse vía Tone).
+    // El stream trae audio; silenciamos el <video> para que el micrófono
+    // nunca se reproduzca crudo por las bocinas.
     video.muted = true;
     let {width, height} = stream.getVideoTracks()[0].getSettings();
     console.log('Resolución:'+ `${width}x${height}`); // 640x480
@@ -1101,7 +1109,6 @@ function initsc1() {
     scene.add(trimesh);
 
     
-    pitchShift.pitch = -4 ; // cambios dinámicos para el futuro 
    
 }
 
@@ -1197,7 +1204,6 @@ function titulo2(){
 
     scene.remove(trimesh);
  
-    pitchShift.pitch = -4 ; // cambios dinámicos para el futuro tal vez con una secuencia    
     
 }
 
@@ -1364,7 +1370,6 @@ function titulo3(){
 
     scene.remove(trimesh);
     
-    pitchShift.pitch = -4 ; // cambios dinámicos para el futuro 
    
     
 }
@@ -1748,21 +1753,9 @@ function guiFunc(){
 	// Fase 7 reencuadra este control sobre el lecho granular.
     })
 
-    audioFolder.add(params, 'voz',  true).onChange(function(){
-	if(params.voz){
-	    distortion.toDestination(); 
-	} else {
-	    distortion.disconnect(); 
-	}
-    })
-    
-    audioFolder.add(params, 'grano',  0.001, 0.1, 0.001).onChange(function(){
-	pitchShift.windowSize = params.grano; 
-    })
-
-    audioFolder.add(params, 'altura',  -24, 24, 1).onChange(function(){
-	pitchShift.pitch = params.altura; 
-    })
+    // M4: murieron los controles de voz/grano/altura (operaban la cadena de
+    // mic de Tone). Fase 7 los reencuadra como técnicas de ofuscación sobre
+    // la voz granulada de M5.
 
 }
 
@@ -2003,12 +1996,11 @@ function loadFont(){
     } );
 }
 
-// M1 (migración Tone→treslib): fuente única de AudioContext. Hoy delega en
-// el contexto de Tone; M4 lo sustituye por un contexto propio cambiando solo
-// esta función.
+// M1/M4 (migración Tone→treslib): fuente única de AudioContext, ya propio
+// (sin Tone). El gesto del botón de inicio lo desbloquea con resume().
 let _audioCtx = null;
 function audioCtx(){
-    if (!_audioCtx) _audioCtx = Tone.getContext().rawContext;
+    if (!_audioCtx) _audioCtx = new AudioContext();
     return _audioCtx;
 }
 
@@ -2202,102 +2194,10 @@ function sonido(){
     intro = new Reproductor('audio/fondos/espera.mp3', { loop: true });
     outline = new Reproductor('audio/fondos/outline.mp3');
 
-/*
-const panner = new Tone.Panner3D({
-	panningModel: 'HRTF',
-    });
-
-*/
-
-// let aKurd = [ 24, 26, 30, 36, 38, 40, 46 ];
-
-let hira = [ 24, 26, 27, 31, 32 ];
-
-// console.log( hira ); 
-
-hira.push(hira[4] + ( hira[1] - hira[0] ));
-hira.shift();
-
-    /*
-    freeverb = new Tone.Reverb().toDestination();
-    // freeverb.dampening = 50;
-    freeverb.decay = 5.2;
-    freeverb.preDelay = 0.5;
-    // freeverb.wet = 0.1
-    */
-
-    distortion = new Tone.Distortion(0.15).toDestination() ;
-    
-    pitchShift = new Tone.PitchShift().connect(distortion);
-    pitchShift.pitch = -4;
-    pitchShift.windowSize = 0.2;
-    pitchShift.sampleTIme = 0.85; 
-
-    panner = new Tone.Panner(0).connect(pitchShift) ;
-
-    if(boolMic && stream){
-	// Reutiliza el track de audio del stream ya autorizado (cámara+micrófono)
-	// en lugar de abrir el micrófono por separado con Tone.UserMedia.
-	const micSource = audioCtx().createMediaStreamSource(stream);
-	Tone.connect(micSource, panner);
-	openmic = true;
-    }
-
-/*
-const kick = new Tone.MembraneSynth({
-    envelope: {
-	sustain: 0,
-	attack: 0.002,
-	decay: 0.05
-    },
-    octaves: 10,
-    pitchDecay: 0.01,
-}).connect(panner);
-*/
-
-    if(boolSynth){
-	const kick = new Tone.MembraneSynth({
-	    pitchDecay: 0.008,
-	    octaves: 12,
-	    envelope: {
-		attack: 0.0006,
-		decay: 0.5,
-		sustain: 0
-	    }
-	}).connect(panner);
-	
-	let pbRate = [0.25, 6/4, 2.5/4, 0.5, 2, 3/2, 5/4];
-	
-	randDiv = Math.floor(Math.random() * 4) + 1; 
-	console.log(randDiv+'n' ); 
-	
-	loopS = new Tone.Loop((time) => {
-	    
-	    let rand = Math.floor(Math.random() * 5); 
-	    let hiraNote = Tone.Frequency(hira[rand]+12, "midi").toNote();
-	    // console.log(hiraNote); 
-	    kick.triggerAttackRelease(hiraNote, '4n', time );
-	    //synth.triggerAttack(hiraNote, now );
-	    //synth.triggerRelease(now + 1)
-	    
-	    loopS.playbackRate = pbRate[Math.floor(Math.random() * pbRate.length)] / 2; 
-	    console.log(randDiv+'n' ); 
-	    hira.push(hira[4] + ( hira[1] - hira[0] ));
-	    hira.shift();
-	    console.log(hira[0]);
-	    
-	    if(hira[0] > 70 ){
-		hira = [ hira[0]-48, hira[1]-48, hira[2]-48, hira[3]-48, hira[4]-48 ];
-	    }
-	    
-	}, '4n' ).start(0); 
-
-	
-    Tone.Transport.bpm.rampTo(50, 20);
-
-    }
-
-    
+    // M4: murió la cadena de mic de Tone (panner → pitchShift → distortion)
+    // y el synth dormido de boolSynth (MembraneSynth/loopS/hira). La voz
+    // renace granular en M5: micSource (del stream unificado) →
+    // AudioBufferRecorder → GrainEngine, gobernada por el botón de mic.
 }
 
 video = document.getElementById( 'video' );
