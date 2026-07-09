@@ -22,7 +22,7 @@
     "stats.js": "^0.17.0",
     "three": "^0.131.3",
     "tone": "^14.7.77",
-    "treslib": "^1.10.0",
+    "treslib": "^1.10.2",
     "tweenjs": "^1.0.2"
   },
   "scripts": {
