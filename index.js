@@ -23,6 +23,7 @@ import { GUI } from './jsm/libs/dat.gui.module.js';
 // importan hydra-synth/three (peerDeps que anti no cubre); GrainEngine es
 // autocontenido y no arrastra nada al build de Parcel.
 import { GrainEngine } from 'treslib/src/GrainEngine.js';
+import { GrainSequencer } from 'treslib/src/GrainSequencer.js';
 // const TWEEN = require('@tweenjs/tween.js')
 
 ///////////////////// Variables importantes
@@ -30,7 +31,10 @@ import { GrainEngine } from 'treslib/src/GrainEngine.js';
 let boolText = true; 
 let boolGui = false; 
 let boolStats = false; 
-let boolMic = true; 
+// Mic suspendido (2026-07-09): evita retroalimentación en las pruebas de la
+// Capa A (solo muestras + granulador). La cadena panner→pitchShift→distortion
+// queda construida pero sin entrada; Fase 5 la sustituye por voz granulada.
+let boolMic = false;
 let numCasos = 13; 
 let boton = false;
 let irises = false; // costoso. Evaluar
@@ -267,7 +271,6 @@ let perlinValue;
 // histórica, que estaba hardcodeada). En modo libre se sobreescribe por frame.
 let perlinAmp = 0.125;
 let cuboGBool = false;
-let loopOf, loopRod, loopTxt, loopTres; 
 
 let blinkRate;
 let blinked = false;
@@ -317,11 +320,35 @@ const OPACIDAD_PISO = 0.15;  // opacidad mínima del video: la cámara se difumi
 // Fase 2 — lecho granular (Capa A, treslib). `ofuscacion` gobierna densidad y
 // nivel; el pointer recorre la muestra conforme te ofuscas; el movimiento
 // instantáneo agrega jitter de posición/pitch.
-const GRANO_MUESTRA = 0;     // muestra inicial de audio/fondos/ (el recorrido por las 16 llega en Fase 4)
+const GRANO_MUESTRA = 0;     // muestra inicial de audio/fondos/
+const GRANO_TOTAL = 16;      // muestras numeradas 0..15, recorridas en orden numérico
+// Avance por picos (adelanto solo-audio de la "vuelta" de Fase 4): tocar el
+// techo de ofuscación arma el cambio de muestra; volver a la base lo ejecuta,
+// justo cuando la amplitud está en el piso y el pointer cerca de 0 — el swap
+// es casi inaudible. Cada ciclo esfuerzo→relajación entrega material nuevo.
+const OFU_TECHO = 0.95;      // ofuscación que cuenta como pico (arma el avance)
+const OFU_BASE = 0.2;        // ofuscación de regreso a base (ejecuta el avance)
 const GRANO_VENTANA = 0.08;  // windowSize (s) de cada grano
 const GRANO_AMP_BASE = 0.1;  // nivel en reposo (granos escasos, nunca silencio total con rostro)
 const GRANO_AMP_TOPE = 0.7;  // nivel en máxima ofuscación
 const GRANO_OVERLAPS_MAX = 8;// granos simultáneos en máxima ofuscación (mínimo 1)
+// M3 — GrainSequencer (treslib): un solo reloj para granos y texto.
+const SEQ_BPM = 30;           // tempo de la pieza: 2 s por beat
+const SEQ_STEPS_POR_BEAT = 2; // resolución del grid: 1 step = 1 s
+// Micro-ritmo del lecho — los ejes que el cuerpo no toca. rate emparentado
+// con los pbRate del synth retirado; windowSize respira alrededor de GRANO_VENTANA.
+const SEQ_RATE_PATRON = [1, 1.5, 1, 0.5, 1, 2, 0.75, 1];
+const SEQ_VENTANA_PATRON = [0.08, 0.1, 0.06, 0.12, 0.08, 0.05, 0.14, 0.08];
+// Scrub del pointer por step, alrededor de la base que pone el cuerpo (ofuscación).
+const SEQ_POINTER_PATRON = [0, 0.03, -0.02, 0.05, 0, -0.04, 0.02, 0.06];
+// Suavizado de parámetros del motor: GrainEngine interpola cada parámetro
+// por grano a lo largo de smoothingTime. Casi un step completo (0.9 s) para
+// que pointer y rate se deslicen entre valores (se escucha el recorrido)
+// en vez de saltar. Es global al motor: suaviza todos sus parámetros.
+const GRANO_SUAVIZADO = 0.9;
+const TEXTO_CADA_STEPS = 4;   // cadencia de texto con rostro (~4 s, la histórica)
+const TEXTO_ESPERA_STEPS = 8; // cadencia de instrucciones en espera, más pausada
+const OFU_TXT_BANDA = 0.35;   // banda de ofuscación: debajo instrucciones, encima manifiesto
 // let cotiBool = false;
 let escenasFolder = []; 
 let objEsc1, objEsc2; 
@@ -342,6 +369,10 @@ let velsX = [], velsY = [], vels = [];
 let avg = 0;
 let ofuscacion = 0;     // acumulador del modo libre (Fase 2), efímero
 let grainEngine = null; // lecho granular treslib (Capa A), null hasta cargar la muestra
+let grainSeq = null;    // GrainSequencer (M3): el reloj único de granos y texto
+let granoIndice = GRANO_MUESTRA; // muestra actual del recorrido (avanza por picos)
+let picoArmado = false;          // tocó el techo; el avance se ejecuta al volver a la base
+let granoBuffers = {};           // caché corto de AudioBuffers: muestra actual + siguiente (lookahead)
 let velarriba, velabajo, velizquierda, velderecha;
 let trigeom = new THREE.BufferGeometry();
 let trimesh = new THREE.Mesh();
@@ -688,11 +719,19 @@ async function renderPrediction() {
 	planeVideo.material.opacity = 1 - (1 - OPACIDAD_PISO) * ofuscacion;
 
 	if (grainEngine) {
-	    grainEngine.setPointer(ofuscacion); // el acumulador recorre la muestra
+	    // El pointer ya no se escribe aquí: es del secuenciador (M3),
+	    // que lo cuantiza al grid con base en esta misma ofuscación.
 	    grainEngine.setOverlaps(1 + (GRANO_OVERLAPS_MAX - 1) * ofuscacion);
 	    grainEngine.setMasterAmp(GRANO_AMP_BASE + (GRANO_AMP_TOPE - GRANO_AMP_BASE) * ofuscacion);
 	    grainEngine.setParamAtTime('randomPosition', movimiento);
 	    grainEngine.setParamAtTime('randomPitch', movimiento * 0.5);
+
+	    // Recorrido por picos: techo arma, base ejecuta.
+	    if (ofuscacion >= OFU_TECHO) picoArmado = true;
+	    if (picoArmado && ofuscacion <= OFU_BASE) {
+		picoArmado = false;
+		avanzarMuestra();
+	    }
 	}
     }
 
@@ -868,11 +907,9 @@ function initsc0() {
     if ( predictions.length < 1 ) {
     
 	outline.stop(0);
-	line.stop(0); 
-	loopTxt.start(0); 
-	loopRod.stop(0);
-	loopOf.stop(0);
-	loopTres.stop(0); 
+	line.stop(0);
+	// M3: el texto de espera (instrucciones) lo despacha el secuenciador
+	// vía !buscando (despacharTexto); los loops de Tone murieron.
 	//out.start(); // out.loop? comentado, esto antes hacia un ruido
 	matLite.map.dispose(); 	
 	matLite.blending = THREE.NoBlending; 
@@ -912,10 +949,8 @@ function initsc0() {
 
     } else {
 
-	loopRod.stop(0); 
-	loopTxt.stop(0); 
 	planeVideo.geometry.dispose();
-	const geometryVideoNew = new THREE.PlaneGeometry( camWidth/camSz, camHeight/camSz ); 
+	const geometryVideoNew = new THREE.PlaneGeometry( camWidth/camSz, camHeight/camSz );
 	planeVideo.geometry = geometryVideoNew; 
 	materialVideo.map = new THREE.VideoTexture( video );
 	matLite.map = vit; 
@@ -948,15 +983,13 @@ function initsc0() {
 
 function titulo1(){
 
-    loopRod.stop(0); 
-    matPoints[0].size = 0; 
+    matPoints[0].size = 0;
     scene.background = vit; 
     selektor(Math.floor(Math.random() * numCasos)); 
     scene.add(blackPlane); 
     outline.stop(0);
     line.stop(0); 
-    // console.log("titulo 1 "); 
-    loopTxt.stop(0); 
+    // console.log("titulo 1 ");
     
     if(boolText){
 	chtexto(
@@ -1019,9 +1052,8 @@ function initsc1() {
     //scene.add( blackPlane );// tal vez que sea aleatorio  
     // cuboGBool = true;
     
-    loopOf.start(0);
     line.stop();
-    outline.stop(); 
+    outline.stop();
     irises = false;    
     afterimagePass.uniforms['damp'].value = 0.85;
     perlinValue = 0.03;
@@ -1146,12 +1178,7 @@ function titulo2(){
     scene.background = vit; 
     selektor(Math.floor(Math.random() * numCasos)); 
     
-    loopOf.stop(0);
-    loopTxt.stop(0);
-    loopRod.stop(0);
-    loopTres.stop(0); 
-
-    line.start(0); 
+    line.start(0);
     if(boolText){
 	chtexto(
 	    "II\nLas consecuencias\nno buscadas del rodeo",
@@ -1195,9 +1222,11 @@ function initsc2() {
     // scene.add( blackPlane); 
     // selektor(0); 
     
-    // cuboGBool = true; 
-    loopRod.start(0); 
-    // line.start(0); 
+    // cuboGBool = true;
+    // M3: exhibición despierta — material nuevo del lecho al entrar a escena
+    // (traduce el viejo sorteo de fondos).
+    if (!libre) avanzarMuestra();
+    // line.start(0);
     // loop.start(0); 
     
     text.material.color = new THREE.Color(0xffffff); 
@@ -1315,10 +1344,6 @@ function titulo3(){
     scene.background = vit; 
     selektor(Math.floor(Math.random() * numCasos)); 
     
-    loopOf.stop(0);
-    loopRod.stop(0); 
-    loopTxt.stop(0);
-    loopTres.stop(0); 
     outline.start();
 
     if(boolText){
@@ -1362,9 +1387,10 @@ function initsc3() {
     }
     
     // scene.add( blackPlane); 
-    // cuboGBool = true; 
-    loopTres.start(0); 
-    // line.start(0); 
+    // cuboGBool = true;
+    // M3: exhibición despierta — material nuevo del lecho al entrar a escena.
+    if (!libre) avanzarMuestra();
+    // line.start(0);
     // loop.start(0); 
     
     text.material.color = new THREE.Color(0xffffff); 
@@ -1718,12 +1744,8 @@ function guiFunc(){
     audioFolder = gui.addFolder('Audio');
 
     audioFolder.add(params, 'sonido',  true).onChange(function(){
-	const audioBool = params.sonido; 
-	if(audioBool){
-	    fondos.mute = false; 
-	} else {
-	    fondos.mute = true; 
-	}
+	// M2: murió `fondos` (y con él, el crash de alcance si boolGui=true).
+	// Fase 7 reencuadra este control sobre el lecho granular.
     })
 
     audioFolder.add(params, 'voz',  true).onChange(function(){
@@ -1981,142 +2003,204 @@ function loadFont(){
     } );
 }
 
+// M1 (migración Tone→treslib): fuente única de AudioContext. Hoy delega en
+// el contexto de Tone; M4 lo sustituye por un contexto propio cambiando solo
+// esta función.
+let _audioCtx = null;
+function audioCtx(){
+    if (!_audioCtx) _audioCtx = Tone.getContext().rawContext;
+    return _audioCtx;
+}
+
 // Capa A (Fase 2): carga una muestra de fondos/ y arranca el motor granular
 // de treslib sobre el mismo AudioContext que ya usa Tone (un solo contexto,
 // mismo permiso). El motor nace escaso y quieto; el bloque de movimiento de
 // renderPrediction lo gobierna por frame vía `ofuscacion` y `movimiento`.
 async function initGranular(){
     try {
-	const ctx = Tone.getContext().rawContext;
-	const resp = await fetch('audio/fondos/' + GRANO_MUESTRA + '.mp3');
-	const datos = await resp.arrayBuffer();
-	const buffer = await ctx.decodeAudioData(datos);
+	const ctx = audioCtx();
+	const buffer = await cargarMuestra(granoIndice);
 	grainEngine = new GrainEngine(ctx, buffer, {
 	    pointer: 0,
 	    rate: 1,
 	    overlaps: 1,
 	    windowSize: GRANO_VENTANA,
 	});
+	grainEngine.smoothingTime = GRANO_SUAVIZADO;
 	grainEngine.setMasterAmp(GRANO_AMP_BASE);
 	grainEngine.connect(ctx.destination);
 	grainEngine.start();
+	initSecuenciador();
+	// Lookahead: la siguiente muestra se descarga durante el ciclo, para
+	// que el avance por pico nunca espere red. Si falla, cargarMuestra
+	// limpia el caché y el avance la reintenta.
+	cargarMuestra((granoIndice + 1) % GRANO_TOTAL).catch(() => {});
     } catch (err) {
 	// Sin lecho granular la pieza sigue (solo visual); no es fatal.
 	console.warn('Lecho granular no disponible:', err);
     }
 }
 
+// Descarga y decodifica una muestra de fondos/, con caché corto (la actual y
+// la siguiente; las demás se sueltan al avanzar — nada se acumula).
+function cargarMuestra(i){
+    if (!granoBuffers[i]) {
+	const ctx = audioCtx();
+	granoBuffers[i] = fetch('audio/fondos/' + i + '.mp3')
+	    .then((resp) => resp.arrayBuffer())
+	    .then((datos) => ctx.decodeAudioData(datos))
+	    .catch((err) => {
+		delete granoBuffers[i]; // reintentable en el siguiente pico
+		throw err;
+	    });
+    }
+    return granoBuffers[i];
+}
+
+// Pico completo (techo → base): la muestra siguiente entra al granulador.
+// GrainEngine lee this.buffer al nacer cada grano, así que el swap es en
+// caliente y sin clics; con la amplitud en el piso es casi imperceptible.
+function avanzarMuestra(){
+    const previa = granoIndice;
+    granoIndice = (granoIndice + 1) % GRANO_TOTAL;
+    const objetivo = granoIndice;
+    cargarMuestra(objetivo).then((buffer) => {
+	if (grainEngine && granoIndice === objetivo) {
+	    grainEngine.buffer = buffer;
+	    delete granoBuffers[previa];
+	    console.log('lecho granular → muestra ' + objetivo);
+	    cargarMuestra((objetivo + 1) % GRANO_TOTAL).catch(() => {});
+	}
+    }).catch((err) => {
+	console.warn('No se pudo avanzar a la muestra ' + objetivo + ':', err);
+    });
+}
+
+// M3: el GrainSequencer de treslib toma el reloj — un solo tempo para el
+// micro-ritmo del lecho (rate/windowSize), el pointer (base del cuerpo +
+// patrón de scrub, cuantizado al grid) y el pulso del texto (onStepChange).
+// Propiedad de parámetros: renderPrediction escribe por frame overlaps,
+// masterAmp y jitter; el secuenciador escribe por step rate, windowSize y
+// pointer. Nadie escribe el parámetro del otro.
+function initSecuenciador(){
+    grainSeq = new GrainSequencer(audioCtx(), SEQ_BPM, SEQ_STEPS_POR_BEAT);
+    grainSeq.addSequence('rate', SEQ_RATE_PATRON, grainEngine);
+    grainSeq.addSequence('windowSize', SEQ_VENTANA_PATRON, grainEngine);
+    grainSeq.onStepChange = (step) => {
+	const scrub = SEQ_POINTER_PATRON[step % SEQ_POINTER_PATRON.length];
+	const pointer = Math.min(1, Math.max(0, ofuscacion + scrub));
+	grainEngine.setParamAtTime('pointer', pointer);
+	despacharTexto(step);
+    };
+    grainSeq.start();
+}
+
+// M3: despacho de texto al pulso del secuenciador (sustituye a los cuatro
+// Tone.Loop). El corpus se decide en el momento: instrucciones en espera,
+// bandas de ofuscación en libre (Fase 3), corpus por escena en exhibición.
+function despacharTexto(step){
+    // antifont/text llegan async (loadFont); el primer step puede ganarles.
+    if (!boolText || !antifont || !text) return;
+    const espera = !buscando;
+    if (step % (espera ? TEXTO_ESPERA_STEPS : TEXTO_CADA_STEPS) !== 0) return;
+
+    let corpus;
+    if (espera) {
+	corpus = txtInstrucciones;
+    } else if (libre) {
+	corpus = (ofuscacion < OFU_TXT_BANDA) ? txtInstrucciones : txtsc1;
+    } else {
+	// Escenas de exhibición; en títulos (2, 4, 6) no pulsa texto, como
+	// cuando los loops se detenían.
+	corpus = ({ 1: txtsc1, 3: txtsc2, 5: txtsc3 })[escena];
+    }
+    if (!corpus || !corpus.length) return;
+
+    // Las instrucciones se abren más en pantalla (rango histórico de loopTxt).
+    const rx = (corpus === txtInstrucciones) ? 40 : 20;
+    chtexto(
+	corpus[Math.floor(Math.random()*corpus.length)],
+	corpus[Math.floor(Math.random()*corpus.length)],
+	Math.random()*rx - rx/2,
+	Math.random()*40 - 20,
+	Math.random()*rx - rx/2,
+	Math.random()*40 - 20
+    );
+}
+
+// M2 (migración Tone→treslib): reproductor mínimo en Web Audio crudo para
+// one-shots y la espera; sustituye a Tone.Player. Tolerante a la carrera de
+// carga: start() antes de que llegue el buffer queda pendiente y suena al
+// cargar, salvo stop() posterior (la carrera que tumbaba a loopOf).
+class Reproductor {
+    constructor(url, opciones = {}){
+	this.loop = opciones.loop || false;
+	this.nivel = 0.5; // ≈ −6 dB, el nivel histórico de estos players
+	this.buffer = null;
+	this.source = null;
+	this.deseado = false;
+	fetch(url)
+	    .then((resp) => resp.arrayBuffer())
+	    .then((datos) => audioCtx().decodeAudioData(datos))
+	    .then((buffer) => {
+		this.buffer = buffer;
+		if (this.deseado) this.start();
+	    })
+	    .catch((err) => console.warn('No se pudo cargar ' + url + ':', err));
+    }
+
+    start(){
+	this.deseado = true;
+	if (!this.buffer) return; // sonará al terminar de cargar
+	this.detenerFuente();
+	const ctx = audioCtx();
+	this.source = ctx.createBufferSource();
+	this.source.buffer = this.buffer;
+	this.source.loop = this.loop;
+	const gain = ctx.createGain();
+	gain.gain.value = this.nivel;
+	this.source.connect(gain);
+	gain.connect(ctx.destination);
+	this.source.start();
+    }
+
+    restart(){
+	this.start();
+    }
+
+    stop(){
+	this.deseado = false;
+	this.detenerFuente();
+    }
+
+    detenerFuente(){
+	if (this.source) {
+	    try { this.source.stop(); } catch (e) { /* nunca inició */ }
+	    this.source.disconnect();
+	    this.source = null;
+	}
+    }
+}
+
 function sonido(){
 
     
-    var fondos = new Tone.Players({
-	"0": "audio/fondos/0.mp3",
-	"1": "audio/fondos/1.mp3",
-	"2": "audio/fondos/2.mp3",
-	"3": "audio/fondos/3.mp3",
-	"4": "audio/fondos/4.mp3",
-	"5": "audio/fondos/5.mp3",
-	"6": "audio/fondos/6.mp3",
-	"7": "audio/fondos/7.mp3",
-	"8": "audio/fondos/8.mp3",
-	"9": "audio/fondos/9.mp3",
-	"10": "audio/fondos/10.mp3",
-	"11": "audio/fondos/11.mp3",
-	"12": "audio/fondos/12.mp3",
-	"13": "audio/fondos/13.mp3",
-	"14": "audio/fondos/14.mp3",
-	"15": "audio/fondos/15.mp3"
-    }).toDestination();
-
-    fondos.volume.value = -6;
-
-    // Modo libre: el lecho granular (Capa A) sustituye a los fondos por
-    // sorteo. Los loops de abajo siguen vivos solo por el texto que
-    // disparan (hasta Fase 3); sus fondos quedan mudos.
-    if (libre) {
-	fondos.mute = true;
-	initGranular();
-    }
-
-// Textos generales
-
-loopOf = new Tone.Loop((time) => {
-    if(boolText){
-	chtexto(
-	    txtsc1[Math.floor(Math.random()*txtsc1.length)],
-	    txtsc1[Math.floor(Math.random()*txtsc1.length)],
-	    Math.random()*20 - 10,
-	    Math.random()*40 - 20,
-	    Math.random()*20 - 10,
-	    Math.random()*40 - 20
-	);
-    }
-    let fondosAl = Math.floor(Math.random()*14);
-    fondos.player(fondosAl.toString()).start(time);   
-}, "4");
-
-loopRod = new Tone.Loop((time) => {
-    if(boolText){
-	chtexto(
-	    txtsc2[Math.floor(Math.random()*txtsc2.length)],
-	    txtsc2[Math.floor(Math.random()*txtsc2.length)],
-	    Math.random()*20 - 10,
-	    Math.random()*40 - 20,
-	    Math.random()*20 - 10,
-	    Math.random()*40 - 10
-	);
-    }
-    let fondosAl = Math.floor(Math.random()*14);
-    fondos.player(fondosAl.toString()).start(time);   
-}, "4");
-
-// Instrucciones 
-
-loopTxt = new Tone.Loop((time) => {
-    if(boolText){
-	chtexto(
-	    txtInstrucciones[Math.floor(Math.random()*txtInstrucciones.length)],
-	    txtInstrucciones[Math.floor(Math.random()*txtInstrucciones.length)],
-	    Math.random()*40 - 20,
-	    Math.random()*40  -20,
-	    Math.random()*40 - 20,
-	    Math.random()*40 - 20
-	);
-    }	
-}, "10");
-
-// Descanso 
-
-loopTres = new Tone.Loop((time) => {
-    if(boolText){
-	chtexto(
-	    txtsc3[Math.floor(Math.random()*txtsc3.length)],
-	    txtsc3[Math.floor(Math.random()*txtsc3.length)],
-	    Math.random()*20 - 0,
-	    Math.random()*40 - 30,
-	    Math.random()*20 - 0,
-	    Math.random()*40 - 30
-	); 
-    }
-}, "4");
-
-Tone.Transport.start();
+    // M2/M3: murió `fondos` (Tone.Players) y murieron los cuatro Tone.Loop
+    // de texto junto con Tone.Transport — el lecho es la Capa A granular
+    // (también para la exhibición despierta: su sorteo se traduce en avances
+    // de muestra al entrar a escena, ver initsc2/initsc3) y el pulso del
+    // texto vive en el GrainSequencer (initSecuenciador/despacharTexto).
+    initGranular();
 
     
-    line = new Tone.Player('audio/fondos/line.mp3').toDestination(); 
-    antiKick = new Tone.Player('audio/perc/antiKick.mp3').toDestination();
-    respawn = new Tone.Player('audio/perc/respawn.mp3').toDestination(); 
-    out = new Tone.Player('audio/perc/out.mp3').toDestination(); 
-    intro = new Tone.Player('audio/fondos/espera.mp3').toDestination();
-    intro.loop = true; 
-    
-    intro.volume.value = -6;
-    respawn.volume.value = -6;
-    out.volume.value = -6;
-    line.volume.value = -6;
-    
-    outline = new Tone.Player('audio/fondos/outline.mp3').toDestination(); 
-    outline.volume.value = -6;
+    // M2: one-shots y espera en Web Audio crudo, fuera de Tone. Mismos
+    // nombres y llamadas (start/stop/restart); nivel −6 dB dentro de la clase.
+    line = new Reproductor('audio/fondos/line.mp3');
+    antiKick = new Reproductor('audio/perc/antiKick.mp3');
+    respawn = new Reproductor('audio/perc/respawn.mp3');
+    out = new Reproductor('audio/perc/out.mp3');
+    intro = new Reproductor('audio/fondos/espera.mp3', { loop: true });
+    outline = new Reproductor('audio/fondos/outline.mp3');
 
 /*
 const panner = new Tone.Panner3D({
@@ -2154,7 +2238,7 @@ hira.shift();
     if(boolMic && stream){
 	// Reutiliza el track de audio del stream ya autorizado (cámara+micrófono)
 	// en lugar de abrir el micrófono por separado con Tone.UserMedia.
-	const micSource = Tone.getContext().rawContext.createMediaStreamSource(stream);
+	const micSource = audioCtx().createMediaStreamSource(stream);
 	Tone.connect(micSource, panner);
 	openmic = true;
     }
