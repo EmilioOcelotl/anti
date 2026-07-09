@@ -122,6 +122,31 @@ font-family: Monospace;
 
 }
 
+#hud {
+position: fixed;
+left: 12px;
+bottom: 12px;
+z-index: 3;
+display: none;
+color: rgba(255, 255, 255, 0.7);
+font-size: 11px;
+font-family: Monospace;
+text-transform: uppercase;
+}
+
+#hudBarra {
+width: 140px;
+height: 3px;
+border: 1px solid rgba(255, 255, 255, 0.4);
+margin-bottom: 6px;
+}
+
+#hudNivel {
+width: 0%;
+height: 100%;
+background: rgba(255, 255, 255, 0.7);
+}
+
 #micButton {
 position: fixed;
 right: 12px;
@@ -265,6 +290,11 @@ right:0;
 </div>
 
 <button id="micButton">mic apagado</button>
+
+<div id="hud">
+  <div id="hudBarra"><div id="hudNivel"></div></div>
+  <div id="hudTexto"></div>
+</div>
 
 <div class="container" id="fonca">
   <div id="infoB">

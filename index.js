@@ -60,8 +60,24 @@ document.querySelector('#startButton').addEventListener('click', async () => {
     // M4: el gesto del usuario desbloquea el AudioContext propio (antes Tone.start()).
     await audioCtx().resume();
     micButton.style.display = 'block';
+    if (libre) {
+	hud.style.display = 'block';
+	actualizarHud();
+    }
     init();
 })
+
+// HUD mínimo (previo a la GUI de Fase 7): barra de ofuscación + vuelta ·
+// corpus · muestra. Solo tiene sentido en modo libre.
+const hud = document.getElementById('hud');
+const hudNivel = document.getElementById('hudNivel');
+const hudTexto = document.getElementById('hudTexto');
+function actualizarHud(){
+    hudNivel.style.width = (ofuscacion * 100) + '%';
+    hudTexto.textContent = 'vuelta ' + (vueltaCorpus + 1) + ' · ' +
+	['manifiesto', 'escritura', 'manual'][vueltaCorpus % 3] +
+	' · muestra ' + granoIndice;
+}
 
 // M4/M5: botón de mic, apagado por defecto. Enciende/apaga la voz granulada
 // (Capa B); al apagar, el buffer rodante se borra — nada persiste.
@@ -406,6 +422,11 @@ let vozMicSource = null;
 let vozDirecta = null;  // GainNode de la vía directa (crossfade con la granular)
 let granoIndice = GRANO_MUESTRA; // muestra actual del recorrido (avanza por picos)
 let picoArmado = false;          // tocó el techo; el avance se ejecuta al volver a la base
+// Fase 4: cada pico completo (techo→base) es una "vuelta" que rota el corpus
+// de texto — txtsc1 (manifiesto) → txtsc2 (escritura) → txtsc3 (el manual) →
+// de vuelta al 1 ("rota, no hay un centro"). Se evapora si el rostro sale
+// del cuadro. (Distinto de `vueltas`, el contador de triángulos por frame.)
+let vueltaCorpus = 0;
 let granoBuffers = {};           // caché corto de AudioBuffers: muestra actual + siguiente (lookahead)
 let velarriba, velabajo, velizquierda, velderecha;
 let trigeom = new THREE.BufferGeometry();
@@ -761,13 +782,20 @@ async function renderPrediction() {
 	    grainEngine.setParamAtTime('randomPosition', movimiento);
 	    grainEngine.setParamAtTime('randomPitch', movimiento * 0.5);
 
-	    // Recorrido por picos: techo arma, base ejecuta.
-	    if (ofuscacion >= OFU_TECHO) picoArmado = true;
+	    // Recorrido por picos: techo arma (y revela la línea-hito de la
+	    // vuelta), base ejecuta — material nuevo en audio Y texto.
+	    if (ofuscacion >= OFU_TECHO && !picoArmado) {
+		picoArmado = true;
+		revelarHito();
+	    }
 	    if (picoArmado && ofuscacion <= OFU_BASE) {
 		picoArmado = false;
 		avanzarMuestra();
+		vueltaCorpus++; // Fase 4: la vuelta rota el corpus de texto
 	    }
 	}
+
+	actualizarHud();
 
 	// Voz granulada (M5): el cuerpo escribe todos sus parámetros por
 	// frame (el secuenciador no toca este motor). Reintento perezoso por
@@ -1000,8 +1028,14 @@ function initsc0() {
 	}
 	
 	buscando = false;
+	// Fase 4: sin rostro, el progreso se evapora — la ofuscación cae a 0
+	// y las vueltas vuelven al manifiesto. Nada persiste.
+	ofuscacion = 0;
+	picoArmado = false;
+	vueltaCorpus = 0;
+	if (libre) actualizarHud();
 	scene.remove( cuboGrande );
-	intro.restart(); // que se detone hasta que la libería esté cargada 
+	intro.restart(); // que se detone hasta que la libería esté cargada
 	// intro.start();
 
     } else {
@@ -2136,9 +2170,26 @@ function initSecuenciador(){
     grainSeq.start();
 }
 
+// Fase 4: el corpus de la vuelta actual. Vuelta 1 = manifiesto, 2 =
+// escritura, 3 = el manual (el desbordamiento: instrucciones para ofuscarse
+// fuera de la pieza); después rota de nuevo.
+function corpusVuelta(){
+    return [txtsc1, txtsc2, txtsc3][vueltaCorpus % 3];
+}
+
+// Fase 4: línea-hito al tocar el techo — la primera línea del corpus de la
+// vuelta, centrada, como marca de capítulo en el punto de máxima ofuscación.
+function revelarHito(){
+    if (!boolText || !antifont) return;
+    const corpus = corpusVuelta();
+    if (!corpus || !corpus.length) return;
+    chtexto(corpus[0], "", 0, 0, 0, 0);
+}
+
 // M3: despacho de texto al pulso del secuenciador (sustituye a los cuatro
 // Tone.Loop). El corpus se decide en el momento: instrucciones en espera,
-// bandas de ofuscación en libre (Fase 3), corpus por escena en exhibición.
+// bandas de ofuscación en libre (Fase 3), corpus por vuelta en libre alto
+// (Fase 4), corpus por escena en exhibición.
 function despacharTexto(step){
     // antifont/text llegan async (loadFont); el primer step puede ganarles.
     if (!boolText || !antifont || !text) return;
@@ -2149,7 +2200,7 @@ function despacharTexto(step){
     if (espera) {
 	corpus = txtInstrucciones;
     } else if (libre) {
-	corpus = (ofuscacion < OFU_TXT_BANDA) ? txtInstrucciones : txtsc1;
+	corpus = (ofuscacion < OFU_TXT_BANDA) ? txtInstrucciones : corpusVuelta();
     } else {
 	// Escenas de exhibición; en títulos (2, 4, 6) no pulsa texto, como
 	// cuando los loops se detenían.
