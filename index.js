@@ -23,6 +23,7 @@ import { GUI } from './jsm/libs/dat.gui.module.js';
 // autocontenido y no arrastra nada al build de Parcel.
 import { GrainEngine } from 'treslib/src/GrainEngine.js';
 import { GrainSequencer } from 'treslib/src/GrainSequencer.js';
+import { AudioBufferRecorder } from 'treslib/src/AudioBufferRecorder.js';
 // const TWEEN = require('@tweenjs/tween.js')
 
 ///////////////////// Variables importantes
@@ -62,12 +63,17 @@ document.querySelector('#startButton').addEventListener('click', async () => {
     init();
 })
 
-// M4: botón de mic, apagado por defecto. Hoy solo gobierna `micActivo`;
-// M5 conecta/desconecta aquí la voz granulada.
+// M4/M5: botón de mic, apagado por defecto. Enciende/apaga la voz granulada
+// (Capa B); al apagar, el buffer rodante se borra — nada persiste.
 const micButton = document.getElementById('micButton');
 micButton.addEventListener('click', () => {
     micActivo = !micActivo;
     micButton.textContent = micActivo ? 'mic encendido' : 'mic apagado';
+    if (micActivo) {
+	encenderVoz();
+    } else {
+	apagarVoz();
+    }
 })
 
 let detector; 
@@ -356,6 +362,23 @@ const GRANO_SUAVIZADO = 0.9;
 const TEXTO_CADA_STEPS = 4;   // cadencia de texto con rostro (~4 s, la histórica)
 const TEXTO_ESPERA_STEPS = 8; // cadencia de instrucciones en espera, más pausada
 const OFU_TXT_BANDA = 0.35;   // banda de ofuscación: debajo instrucciones, encima manifiesto
+// M5 — Capa B: voz granulada. Buffer rodante del mic (efímero: se
+// sobreescribe siempre, se borra al apagar — nunca se guarda) granulado con
+// un GrainEngine propio. El pointer sigue la cabeza de escritura con un
+// retraso corto: tu voz casi en vivo. Quieto se oye poco velada; la
+// ofuscación la dispersa. Todos sus parámetros son del cuerpo (por frame);
+// el secuenciador no toca este motor.
+const VOZ_BUFFER_S = 4;          // duración del buffer rodante (s)
+const VOZ_RETRASO = 0.35;        // s detrás de la cabeza de escritura (> ventana máxima)
+// Crossfade directa↔granulada: en reposo la voz pasa (casi) directa y se
+// entiende; la ofuscación la disuelve en granos (directa baja, granular sube).
+const VOZ_DIRECTA_AMP = 0.8;     // nivel de la vía directa en reposo
+const VOZ_AMP = 0.5;             // nivel de la voz granulada en máxima ofuscación
+const VOZ_VENTANA_QUIETO = 0.18; // granos largos: voz casi íntegra
+const VOZ_VENTANA_MOVIDO = 0.06; // granos cortos en máxima ofuscación
+const VOZ_OVERLAPS_QUIETO = 2;
+const VOZ_OVERLAPS_MOVIDO = 6;
+const VOZ_PITCH_MOVIDO = 0.6;    // randomPitch en máxima ofuscación
 // let cotiBool = false;
 let escenasFolder = []; 
 let objEsc1, objEsc2; 
@@ -377,6 +400,10 @@ let avg = 0;
 let ofuscacion = 0;     // acumulador del modo libre (Fase 2), efímero
 let grainEngine = null; // lecho granular treslib (Capa A), null hasta cargar la muestra
 let grainSeq = null;    // GrainSequencer (M3): el reloj único de granos y texto
+let vozEngine = null;   // GrainEngine de la voz (M5), null hasta encender el mic
+let vozRecorder = null; // AudioBufferRecorder: buffer rodante del mic, efímero
+let vozMicSource = null;
+let vozDirecta = null;  // GainNode de la vía directa (crossfade con la granular)
 let granoIndice = GRANO_MUESTRA; // muestra actual del recorrido (avanza por picos)
 let picoArmado = false;          // tocó el techo; el avance se ejecuta al volver a la base
 let granoBuffers = {};           // caché corto de AudioBuffers: muestra actual + siguiente (lookahead)
@@ -740,6 +767,28 @@ async function renderPrediction() {
 		picoArmado = false;
 		avanzarMuestra();
 	    }
+	}
+
+	// Voz granulada (M5): el cuerpo escribe todos sus parámetros por
+	// frame (el secuenciador no toca este motor). Reintento perezoso por
+	// si el botón se encendió antes de que existiera el stream.
+	if (micActivo && !vozEngine) encenderVoz();
+	if (micActivo && vozEngine) {
+	    // Crossfade directa↔granulada: la ofuscación disuelve la voz.
+	    vozDirecta.gain.setTargetAtTime(
+		VOZ_DIRECTA_AMP * (1 - ofuscacion), audioCtx().currentTime, 0.05);
+	    vozEngine.setMasterAmp(VOZ_AMP * ofuscacion);
+	    vozEngine.setParamAtTime('windowSize',
+		VOZ_VENTANA_QUIETO + (VOZ_VENTANA_MOVIDO - VOZ_VENTANA_QUIETO) * ofuscacion);
+	    vozEngine.setOverlaps(
+		VOZ_OVERLAPS_QUIETO + (VOZ_OVERLAPS_MOVIDO - VOZ_OVERLAPS_QUIETO) * ofuscacion);
+	    vozEngine.setParamAtTime('randomPitch', VOZ_PITCH_MOVIDO * ofuscacion);
+	    vozEngine.setParamAtTime('randomPosition', movimiento);
+	    // El pointer persigue la cabeza de escritura con retraso corto:
+	    // lo recién dicho, granulado casi en vivo.
+	    const cabeza = vozRecorder.currentPosition / vozRecorder.bufferSize;
+	    const retraso = VOZ_RETRASO / VOZ_BUFFER_S;
+	    vozEngine.setParamAtTime('pointer', (cabeza - retraso + 1) % 1);
 	}
     }
 
@@ -2118,6 +2167,54 @@ function despacharTexto(step){
 	Math.random()*rx - rx/2,
 	Math.random()*40 - 20
     );
+}
+
+// M5 (Capa B): enciende la voz granulada. El buffer rodante graba el mic en
+// círculo (efímero) y el GrainEngine de voz granula lo recién dicho. Si el
+// stream aún no existe (botón presionado muy temprano), renderPrediction
+// reintenta en cuanto haya cámara.
+function encenderVoz(){
+    if (!stream || !micActivo) return;
+    const ctx = audioCtx();
+    if (!vozRecorder) {
+	vozMicSource = ctx.createMediaStreamSource(stream);
+	// connectToOutput=true: el ScriptProcessor necesita colgar del
+	// destino para procesar en Chrome; su salida es silencio (no escribe
+	// el buffer de salida), así que no se oye el mic crudo.
+	vozRecorder = new AudioBufferRecorder(ctx, vozMicSource, VOZ_BUFFER_S, true);
+    }
+    vozRecorder.startRecording(); // crea un buffer nuevo (el anterior se evaporó)
+    if (!vozDirecta) {
+	// Vía directa: la voz se entiende en reposo; el crossfade por frame
+	// la disuelve hacia la granular conforme sube la ofuscación.
+	vozDirecta = ctx.createGain();
+	vozDirecta.gain.value = 0; // el mapeo por frame la sube enseguida
+	vozMicSource.connect(vozDirecta);
+	vozDirecta.connect(ctx.destination);
+    }
+    if (!vozEngine) {
+	vozEngine = new GrainEngine(ctx, vozRecorder.getRecordedBuffer(), {
+	    pointer: 0,
+	    rate: 1,
+	    overlaps: VOZ_OVERLAPS_QUIETO,
+	    windowSize: VOZ_VENTANA_QUIETO,
+	});
+	vozEngine.setMasterAmp(0); // nace muda: solo la ofuscación la trae
+	vozEngine.connect(ctx.destination);
+    } else {
+	vozEngine.buffer = vozRecorder.getRecordedBuffer();
+    }
+    vozEngine.start();
+}
+
+// M5: apaga la voz y evapora el buffer — "no hay datos almacenados" sonando.
+function apagarVoz(){
+    if (vozDirecta) vozDirecta.gain.setTargetAtTime(0, audioCtx().currentTime, 0.02);
+    if (vozEngine) vozEngine.stop();
+    if (vozRecorder) {
+	vozRecorder.stopRecording();
+	vozRecorder.clearBuffer();
+    }
 }
 
 // M2 (migración Tone→treslib): reproductor mínimo en Web Audio crudo para
