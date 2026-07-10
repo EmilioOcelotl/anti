@@ -129,7 +129,7 @@ bottom: 12px;
 z-index: 3;
 display: none;
 color: rgba(255, 255, 255, 0.7);
-font-size: 11px;
+font-size: 0.8125rem;
 font-family: Monospace;
 text-transform: uppercase;
 }
@@ -152,13 +152,17 @@ background: rgba(255, 255, 255, 0.7);
    Tinta única: blanco a distintas opacidades, como la pieza.
    ============================================================ */
 
+/* Tipografía en rem: respeta el tamaño de fuente que el usuario configuró
+   en su navegador (px fijos lo ignoran). Escala ~120% sobre el borrador
+   original, verificada por Emilio con zoom. tinta-3 al 48% para cumplir
+   el contraste AA de WCAG en texto pequeño; tinta-4 queda decorativa. */
 :root {
 --tinta-1: rgba(255,255,255,.85);
 --tinta-2: rgba(255,255,255,.62);
---tinta-3: rgba(255,255,255,.42);
+--tinta-3: rgba(255,255,255,.48);
 --tinta-4: rgba(255,255,255,.24);
 --linea:   rgba(255,255,255,.16);
---panel-w: 322px;
+--panel-w: 370px;
 }
 
 :focus-visible {
@@ -180,7 +184,7 @@ color: rgba(255, 255, 255, 0.7);
 padding: 8px 14px;
 text-transform: uppercase;
 cursor: pointer;
-font-size: 12px;
+font-size: 0.875rem;
 font-family: Monospace;
 transition: right .28s ease, color .2s, border-color .2s, opacity .25s;
 }
@@ -237,7 +241,7 @@ justify-content: space-between;
 margin-bottom: 4px;
 }
 #manualCabecera h1 {
-font-size: 12px;
+font-size: 0.875rem;
 font-weight: normal;
 letter-spacing: 2px;
 text-transform: uppercase;
@@ -248,14 +252,14 @@ margin: 0;
 background: transparent;
 border: 0;
 color: var(--tinta-3);
-font-size: 14px;
+font-size: 1rem;
 cursor: pointer;
 padding: 2px 6px;
 }
 #cerrarManual:hover { color: var(--tinta-1); }
 
 .epigrafe {
-font-size: 10px;
+font-size: 0.75rem;
 color: var(--tinta-3);
 margin: 0 0 8px 0;
 line-height: 1.6;
@@ -268,7 +272,7 @@ border: 1px solid var(--linea);
 border-radius: 10px;
 padding: 6px 12px;
 margin-bottom: 10px;
-font-size: 10px;
+font-size: 0.75rem;
 text-transform: uppercase;
 color: var(--tinta-2);
 }
@@ -295,7 +299,7 @@ margin: 4px 0 5px 0;
 list-style: none;
 cursor: pointer;
 padding: 7px 2px;
-font-size: 11px;
+font-size: 0.8125rem;
 letter-spacing: 2px;
 text-transform: uppercase;
 color: var(--tinta-3);
@@ -305,7 +309,7 @@ align-items: center;
 }
 #manual summary::-webkit-details-marker { display: none; }
 #manual summary:hover { color: var(--tinta-1); }
-#manual summary .marca { color: var(--tinta-4); transition: transform .2s; font-size: 10px; }
+#manual summary .marca { color: var(--tinta-4); transition: transform .2s; font-size: 0.75rem; }
 #manual details[open] summary .marca { transform: rotate(90deg); }
 #manual details[open] summary { color: var(--tinta-2); }
 #manual summary .sub { color: var(--tinta-4); letter-spacing: 0; text-transform: lowercase; margin-left: 8px; }
@@ -321,7 +325,7 @@ align-items: center;
 display: flex;
 align-items: baseline;
 gap: 8px;
-font-size: 11px;
+font-size: 0.8125rem;
 text-transform: uppercase;
 letter-spacing: 1px;
 color: var(--tinta-2);
@@ -338,7 +342,7 @@ transition: color .15s;
 .tecnica.activa .valor { color: #fff; }
 
 .linea-manual {
-font-size: 10.5px;
+font-size: 0.8125rem;
 line-height: 1.45;
 color: var(--tinta-3);
 margin: 2px 0 3px 0;
@@ -401,7 +405,7 @@ background: transparent;
 border: 1px solid transparent;
 border-radius: 10px;
 color: var(--tinta-4);
-font-size: 10px;
+font-size: 0.75rem;
 text-transform: uppercase;
 letter-spacing: 1px;
 padding: 4px 9px;
@@ -449,7 +453,7 @@ background: rgba(255,255,255,.55);
 display: flex;
 gap: 4px;
 margin-top: 2px;
-font-size: 9px;
+font-size: 0.6875rem;
 color: var(--tinta-4);
 }
 .patPies span { flex: 1; text-align: center; }
@@ -462,7 +466,7 @@ border: 1px solid rgba(255,255,255,.4);
 border-radius: 10px;
 color: var(--tinta-2);
 padding: 6px 12px;
-font-size: 10px;
+font-size: 0.75rem;
 text-transform: uppercase;
 letter-spacing: 1px;
 cursor: pointer;
@@ -474,7 +478,7 @@ cursor: pointer;
 
 #seccionVoz.sinMic .cuerpoSeccion { opacity: .3; pointer-events: none; }
 #notaVoz {
-font-size: 10px;
+font-size: 0.75rem;
 color: var(--tinta-3);
 margin: 0 0 14px 0;
 display: none;
@@ -494,7 +498,7 @@ padding: 7px 2px;
 
 #manualPie {
 margin-top: 8px;
-font-size: 10px;
+font-size: 0.75rem;
 line-height: 1.7;
 color: var(--tinta-4);
 display: flex;
@@ -508,7 +512,7 @@ border: 1px solid rgba(255,255,255,.35);
 border-radius: 10px;
 color: var(--tinta-3);
 padding: 5px 10px;
-font-size: 10px;
+font-size: 0.75rem;
 text-transform: uppercase;
 letter-spacing: 1px;
 cursor: pointer;
@@ -528,7 +532,7 @@ flex-direction: column;
 align-items: center;
 justify-content: center;
 text-align: center;
-font-size: 14px;
+font-size: 0.875rem;
 line-height: 1.8;
 color: #fff;
 padding: 24px;
@@ -543,7 +547,7 @@ color: #ffffff;
 padding: 20px 30px;
 text-transform: uppercase;
 cursor: pointer;
-font-size: 14px;
+font-size: 0.875rem;
 font-family: Monospace;
 }
 
