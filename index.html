@@ -147,13 +147,33 @@ height: 100%;
 background: rgba(255, 255, 255, 0.7);
 }
 
-#micButton {
+/* ============================================================
+   Fase 7 — el manual de ofuscación (panel lateral nunca-modal).
+   Tinta única: blanco a distintas opacidades, como la pieza.
+   ============================================================ */
+
+:root {
+--tinta-1: rgba(255,255,255,.85);
+--tinta-2: rgba(255,255,255,.62);
+--tinta-3: rgba(255,255,255,.42);
+--tinta-4: rgba(255,255,255,.24);
+--linea:   rgba(255,255,255,.16);
+--panel-w: 322px;
+}
+
+:focus-visible {
+outline: 1px dashed rgba(255,255,255,.65);
+outline-offset: 2px;
+}
+
+/* botones flotantes: manual + mic. Se corren a la izquierda con el manual abierto. */
+
+#micButton, #manualButton {
 position: fixed;
-right: 12px;
 bottom: 12px;
-z-index: 3;
+z-index: 5;
 display: none;
-background: transparent;
+background: rgba(0,0,0,.35);
 border: 1px solid rgba(255, 255, 255, 0.5);
 border-radius: 10px;
 color: rgba(255, 255, 255, 0.7);
@@ -162,6 +182,385 @@ text-transform: uppercase;
 cursor: pointer;
 font-size: 12px;
 font-family: Monospace;
+transition: right .28s ease, color .2s, border-color .2s, opacity .25s;
+}
+
+#micButton { right: 12px; }
+#manualButton { right: 132px; }
+
+body.manual-abierto #micButton { right: calc(var(--panel-w) + 12px); }
+body.manual-abierto #manualButton { right: calc(var(--panel-w) + 132px); }
+
+#micButton:hover, #manualButton:hover {
+color: var(--tinta-1);
+border-color: rgba(255,255,255,.8);
+}
+
+/* En la vuelta 3 (el manual revelado) el botón sube de presencia. */
+#manualButton.revelado {
+color: var(--tinta-1);
+border-color: rgba(255,255,255,.85);
+}
+
+/* el manual */
+
+#manual {
+position: fixed;
+top: 0;
+right: 0;
+bottom: 0;
+width: min(var(--panel-w), 92vw);
+z-index: 4;
+box-sizing: border-box;
+background: rgba(0,0,0,.78);
+backdrop-filter: blur(9px);
+-webkit-backdrop-filter: blur(9px);
+border-left: 1px solid var(--linea);
+transform: translateX(102%);
+transition: transform .28s ease;
+overflow-y: auto;
+overscroll-behavior: contain;
+padding: 10px 18px 12px 18px;
+/* sin barra: el acordeón exclusivo garantiza que el contenido quepa;
+   el scroll queda solo como red en ventanas muy bajas */
+scrollbar-width: none;
+}
+body.manual-abierto #manual { transform: translateX(0); }
+#manual::-webkit-scrollbar { display: none; }
+#manual * { box-sizing: border-box; }
+#manual button { font-family: Monospace; }
+
+#manualCabecera {
+display: flex;
+align-items: baseline;
+justify-content: space-between;
+margin-bottom: 4px;
+}
+#manualCabecera h1 {
+font-size: 12px;
+font-weight: normal;
+letter-spacing: 2px;
+text-transform: uppercase;
+color: var(--tinta-1);
+margin: 0;
+}
+#cerrarManual {
+background: transparent;
+border: 0;
+color: var(--tinta-3);
+font-size: 14px;
+cursor: pointer;
+padding: 2px 6px;
+}
+#cerrarManual:hover { color: var(--tinta-1); }
+
+.epigrafe {
+font-size: 10px;
+color: var(--tinta-3);
+margin: 0 0 8px 0;
+line-height: 1.6;
+}
+
+/* estado — solo lectura */
+
+#estado {
+border: 1px solid var(--linea);
+border-radius: 10px;
+padding: 6px 12px;
+margin-bottom: 10px;
+font-size: 10px;
+text-transform: uppercase;
+color: var(--tinta-2);
+}
+#estado .etiqueta {
+color: var(--tinta-4);
+letter-spacing: 1px;
+margin-bottom: 4px;
+}
+#estadoBarra {
+width: 100%;
+height: 3px;
+border: 1px solid rgba(255,255,255,.35);
+margin: 4px 0 5px 0;
+}
+#estadoNivel { width: 0%; height: 100%; background: rgba(255,255,255,.7); }
+#estado .dato { display: flex; justify-content: space-between; margin-top: 3px; }
+#estado .dato b { font-weight: normal; color: var(--tinta-1); }
+
+/* secciones */
+
+#manual details { border-top: 1px solid var(--linea); }
+
+#manual summary {
+list-style: none;
+cursor: pointer;
+padding: 7px 2px;
+font-size: 11px;
+letter-spacing: 2px;
+text-transform: uppercase;
+color: var(--tinta-3);
+display: flex;
+justify-content: space-between;
+align-items: center;
+}
+#manual summary::-webkit-details-marker { display: none; }
+#manual summary:hover { color: var(--tinta-1); }
+#manual summary .marca { color: var(--tinta-4); transition: transform .2s; font-size: 10px; }
+#manual details[open] summary .marca { transform: rotate(90deg); }
+#manual details[open] summary { color: var(--tinta-2); }
+#manual summary .sub { color: var(--tinta-4); letter-spacing: 0; text-transform: lowercase; margin-left: 8px; }
+
+.cuerpoSeccion { padding: 2px 2px 6px 2px; }
+
+/* una técnica */
+
+.tecnica { margin-bottom: 9px; }
+.tecnica:last-child { margin-bottom: 3px; }
+
+.tecnica .fila {
+display: flex;
+align-items: baseline;
+gap: 8px;
+font-size: 11px;
+text-transform: uppercase;
+letter-spacing: 1px;
+color: var(--tinta-2);
+}
+.tecnica .num { color: var(--tinta-4); }
+.tecnica .valor {
+margin-left: auto;
+color: var(--tinta-2);
+letter-spacing: 0;
+text-transform: none;
+transition: color .15s;
+}
+.tecnica:hover .fila { color: var(--tinta-1); }
+.tecnica.activa .valor { color: #fff; }
+
+.linea-manual {
+font-size: 10.5px;
+line-height: 1.45;
+color: var(--tinta-3);
+margin: 2px 0 3px 0;
+}
+.linea-manual .v {
+font-weight: normal;
+color: var(--tinta-1);
+}
+.tecnica:hover .linea-manual { color: var(--tinta-2); }
+
+/* slider: línea de 1px, pulgar cuadrado */
+
+#manual input[type=range] {
+-webkit-appearance: none;
+appearance: none;
+width: 100%;
+height: 12px;
+margin: 0;
+background: transparent;
+cursor: pointer;
+--p: 50%;
+}
+#manual input[type=range]::-webkit-slider-runnable-track {
+height: 12px;
+background: linear-gradient(to right,
+  rgba(255,255,255,.7) var(--p), rgba(255,255,255,.16) var(--p));
+background-size: 100% 1px;
+background-position: center;
+background-repeat: no-repeat;
+}
+#manual input[type=range]::-webkit-slider-thumb {
+-webkit-appearance: none;
+width: 9px;
+height: 9px;
+margin-top: 1.5px;
+background: #000;
+border: 1px solid rgba(255,255,255,.85);
+}
+#manual input[type=range]::-moz-range-track {
+height: 1px;
+background: rgba(255,255,255,.16);
+}
+#manual input[type=range]::-moz-range-progress {
+height: 1px;
+background: rgba(255,255,255,.7);
+}
+#manual input[type=range]::-moz-range-thumb {
+width: 7px;
+height: 7px;
+border-radius: 0;
+background: #000;
+border: 1px solid rgba(255,255,255,.85);
+}
+
+/* secuenciador de 8 pasos */
+
+.patTabs { display: flex; gap: 6px; margin-bottom: 4px; }
+.patTabs button {
+background: transparent;
+border: 1px solid transparent;
+border-radius: 10px;
+color: var(--tinta-4);
+font-size: 10px;
+text-transform: uppercase;
+letter-spacing: 1px;
+padding: 4px 9px;
+cursor: pointer;
+}
+.patTabs button:hover { color: var(--tinta-2); }
+.patTabs button.activo {
+color: var(--tinta-1);
+border-color: rgba(255,255,255,.4);
+}
+
+#patGrid {
+display: flex;
+gap: 4px;
+height: 44px;
+border: 1px solid var(--linea);
+border-radius: 10px;
+padding: 5px;
+touch-action: none;
+position: relative;
+}
+#patGrid.bipolar::after {
+content: "";
+position: absolute;
+left: 5px; right: 5px; top: 50%;
+height: 1px;
+background: rgba(255,255,255,.14);
+pointer-events: none;
+}
+.patPaso {
+flex: 1;
+position: relative;
+cursor: ns-resize;
+}
+.patPaso .relleno {
+position: absolute;
+left: 15%;
+width: 70%;
+background: rgba(255,255,255,.55);
+}
+.patPaso:hover .relleno,
+.patPaso:focus-visible .relleno { background: rgba(255,255,255,.9); }
+
+.patPies {
+display: flex;
+gap: 4px;
+margin-top: 2px;
+font-size: 9px;
+color: var(--tinta-4);
+}
+.patPies span { flex: 1; text-align: center; }
+
+/* toggle (silencio del texto) */
+
+.toggleTecnica {
+background: transparent;
+border: 1px solid rgba(255,255,255,.4);
+border-radius: 10px;
+color: var(--tinta-2);
+padding: 6px 12px;
+font-size: 10px;
+text-transform: uppercase;
+letter-spacing: 1px;
+cursor: pointer;
+}
+.toggleTecnica:hover { color: var(--tinta-1); border-color: rgba(255,255,255,.7); }
+.toggleTecnica.encendido { color: #000; background: rgba(255,255,255,.75); }
+
+/* sección voz apagada sin mic */
+
+#seccionVoz.sinMic .cuerpoSeccion { opacity: .3; pointer-events: none; }
+#notaVoz {
+font-size: 10px;
+color: var(--tinta-3);
+margin: 0 0 14px 0;
+display: none;
+}
+#seccionVoz.sinMic #notaVoz { display: block; }
+
+/* coda: silencio, la última técnica, fuera del acordeón */
+
+#coda {
+border-top: 1px solid var(--linea);
+border-bottom: 1px solid var(--linea);
+padding: 7px 2px;
+}
+#coda .tecnica { margin-bottom: 0; }
+
+/* pie del manual */
+
+#manualPie {
+margin-top: 8px;
+font-size: 10px;
+line-height: 1.7;
+color: var(--tinta-4);
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 10px;
+}
+#verInicio {
+background: transparent;
+border: 1px solid rgba(255,255,255,.35);
+border-radius: 10px;
+color: var(--tinta-3);
+padding: 5px 10px;
+font-size: 10px;
+text-transform: uppercase;
+letter-spacing: 1px;
+cursor: pointer;
+white-space: nowrap;
+}
+#verInicio:hover { color: var(--tinta-1); border-color: rgba(255,255,255,.7); }
+
+/* releer el inicio: el texto de arranque, reabierto desde el manual */
+
+#onboarding {
+position: fixed;
+inset: 0;
+z-index: 9;
+background: rgba(0,0,0,.93);
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+text-align: center;
+font-size: 14px;
+line-height: 1.8;
+color: #fff;
+padding: 24px;
+}
+#onboarding[hidden] { display: none; }
+#onboarding button {
+margin-top: 34px;
+background: transparent;
+border: 1px solid rgb(255,255,255);
+border-radius: 10px;
+color: #ffffff;
+padding: 20px 30px;
+text-transform: uppercase;
+cursor: pointer;
+font-size: 14px;
+font-family: Monospace;
+}
+
+/* en pantallas angostas el panel cubre casi todo: los botones
+   flotantes y el HUD se retiran mientras el manual está abierto */
+@media (max-width: 640px) {
+body.manual-abierto #micButton,
+body.manual-abierto #manualButton,
+body.manual-abierto #hud {
+opacity: 0;
+pointer-events: none;
+}
+#hud { transition: opacity .25s; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+#manual, #micButton, #manualButton { transition: none; }
 }
 
 .loader {
@@ -290,10 +689,167 @@ right:0;
 </div>
 
 <button id="micButton">mic apagado</button>
+<button id="manualButton" aria-expanded="false" aria-controls="manual">manual</button>
 
 <div id="hud">
   <div id="hudBarra"><div id="hudNivel"></div></div>
   <div id="hudTexto"></div>
+</div>
+
+<!-- Fase 7: el manual de ofuscación. Cada control es una técnica; los
+     valores se tejen en las frases (los textos son borrador, curaduría 7c).
+     Los data-k corresponden 1:1 con las claves del objeto `tecnicas`. -->
+<aside id="manual" aria-label="manual de ofuscación">
+
+  <div id="manualCabecera">
+    <h1>Manual de ofuscación</h1>
+    <button id="cerrarManual" aria-label="cerrar el manual">×</button>
+  </div>
+  <p class="epigrafe">cada control es una técnica. moverlo es practicarla.</p>
+
+  <div id="estado">
+    <div class="etiqueta">estado — solo lectura</div>
+    <div class="dato"><span>ofuscación</span><b id="estadoValor">0.00</b></div>
+    <div id="estadoBarra"><div id="estadoNivel"></div></div>
+    <div class="dato"><span>vuelta</span><b id="estadoVuelta"></b></div>
+  </div>
+
+  <!-- I · IMAGEN -->
+  <details open>
+    <summary>I · Imagen <span class="sub">lo que se ve de ti</span><span class="marca">▸</span></summary>
+    <div class="cuerpoSeccion">
+
+      <div class="tecnica" data-k="temblor">
+        <div class="fila"><span class="num">01</span><span class="nombre">Temblor</span><span class="valor"></span></div>
+        <p class="linea-manual">tu rostro se deforma hasta <b class="v"></b>.</p>
+        <input type="range" min="0.06" max="0.3" step="0.005" value="0.12" aria-label="amplitud de deformación">
+      </div>
+
+      <div class="tecnica" data-k="estela">
+        <div class="fila"><span class="num">02</span><span class="nombre">Estela</span><span class="valor"></span></div>
+        <p class="linea-manual">tu imagen persiste <b class="v"></b> detrás de ti.</p>
+        <input type="range" min="0.86" max="0.98" step="0.005" value="0.96" aria-label="duración de las trazas">
+      </div>
+
+      <div class="tecnica" data-k="velo">
+        <div class="fila"><span class="num">03</span><span class="nombre">Velo</span><span class="valor"></span></div>
+        <p class="linea-manual">la cámara conserva <b class="v"></b> de sí.</p>
+        <input type="range" min="0" max="0.5" step="0.01" value="0.15" aria-label="opacidad mínima de la cámara">
+      </div>
+
+    </div>
+  </details>
+
+  <!-- II · NUBE -->
+  <details>
+    <summary>II · Nube <span class="sub">el sonido de fondo</span><span class="marca">▸</span></summary>
+    <div class="cuerpoSeccion">
+
+      <div class="tecnica" data-k="grano">
+        <div class="fila"><span class="num">04</span><span class="nombre">Grano</span><span class="valor"></span></div>
+        <p class="linea-manual">cada fragmento dura <b class="v"></b>.</p>
+        <input type="range" min="0.02" max="0.2" step="0.005" value="0.08" aria-label="tamaño de grano">
+      </div>
+
+      <div class="tecnica" data-k="densidad">
+        <div class="fila"><span class="num">05</span><span class="nombre">Densidad</span><span class="valor"></span></div>
+        <p class="linea-manual">hasta <b class="v"></b> granos a la vez.</p>
+        <input type="range" min="1" max="16" step="1" value="8" aria-label="densidad máxima de granos">
+      </div>
+
+      <div class="tecnica" data-k="nivel">
+        <div class="fila"><span class="num">06</span><span class="nombre">Nivel</span><span class="valor"></span></div>
+        <p class="linea-manual">el techo suena a <b class="v"></b>.</p>
+        <input type="range" min="0.1" max="1" step="0.05" value="0.7" aria-label="nivel máximo de la nube">
+      </div>
+
+      <div class="tecnica" data-k="deslizamiento">
+        <div class="fila"><span class="num">07</span><span class="nombre">Deslizamiento</span><span class="valor"></span></div>
+        <p class="linea-manual">los parámetros llegan en <b class="v"></b>.</p>
+        <input type="range" min="0.05" max="2" step="0.05" value="0.9" aria-label="suavizado del motor granular">
+      </div>
+
+      <div class="tecnica" id="tecnicaSecuencia">
+        <div class="fila"><span class="num">08</span><span class="nombre">Secuencia</span><span class="valor" id="patValor"></span></div>
+        <p class="linea-manual">ocho pasos, un segundo cada uno.</p>
+        <div class="patTabs" role="tablist">
+          <button class="activo" data-pat="ritmo" role="tab">ritmo</button>
+          <button data-pat="respiracion" role="tab">respiración</button>
+          <button data-pat="deriva" role="tab">deriva</button>
+        </div>
+        <div id="patGrid"></div>
+        <div class="patPies">
+          <span>1</span><span>2</span><span>3</span><span>4</span>
+          <span>5</span><span>6</span><span>7</span><span>8</span>
+        </div>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- III · VOZ -->
+  <details id="seccionVoz" class="sinMic">
+    <summary>III · Voz <span class="sub">lo que se oye de ti</span><span class="marca">▸</span></summary>
+    <div class="cuerpoSeccion">
+      <p id="notaVoz">enciende el micrófono para practicar estas técnicas.</p>
+
+      <div class="tecnica" data-k="presencia">
+        <div class="fila"><span class="num">09</span><span class="nombre">Presencia</span><span class="valor"></span></div>
+        <p class="linea-manual">en reposo, tu voz pasa a <b class="v"></b>.</p>
+        <input type="range" min="0" max="1" step="0.05" value="0.8" aria-label="nivel de la voz directa">
+      </div>
+
+      <div class="tecnica" data-k="dispersion">
+        <div class="fila"><span class="num">10</span><span class="nombre">Dispersión</span><span class="valor"></span></div>
+        <p class="linea-manual">ofuscada, vuelve hecha granos: <b class="v"></b>.</p>
+        <input type="range" min="0" max="1" step="0.05" value="0.5" aria-label="nivel de la voz granulada">
+      </div>
+
+      <div class="tecnica" data-k="eco">
+        <div class="fila"><span class="num">11</span><span class="nombre">Eco</span><span class="valor"></span></div>
+        <p class="linea-manual">tu voz habla <b class="v"></b> detrás de ti.</p>
+        <input type="range" min="0.2" max="1" step="0.05" value="0.35" aria-label="retraso de la voz">
+      </div>
+
+      <div class="tecnica" data-k="quiebre">
+        <div class="fila"><span class="num">12</span><span class="nombre">Quiebre</span><span class="valor"></span></div>
+        <p class="linea-manual">cada grano se desafina hasta <b class="v"></b>.</p>
+        <input type="range" min="0" max="1" step="0.05" value="0.6" aria-label="desafinación máxima">
+      </div>
+
+    </div>
+  </details>
+
+  <!-- coda: la última técnica, siempre a la vista -->
+  <div id="coda">
+    <div class="tecnica">
+      <div class="fila"><span class="num">13</span><span class="nombre">Silencio</span>
+        <button class="toggleTecnica" id="toggleTexto" aria-pressed="false" style="margin-left:auto">texto visible</button>
+      </div>
+      <p class="linea-manual">calla la escritura.</p>
+    </div>
+  </div>
+
+  <p id="manualPie">
+    <span>al recargar, el manual vuelve a su estado.</span>
+    <button id="verInicio">releer el inicio</button>
+  </p>
+
+</aside>
+
+<!-- releer el inicio: el mismo texto de arranque, reabierto desde el manual -->
+<div id="onboarding" hidden>
+  <div>
+    4 N T 1<br>
+    Emilio Ocelotl<br><br>
+    La ofuscación como motivo, la escritura como rodeo.<br><br>
+    Esta pieza usa tu cámara y tu micrófono:<br>
+    tu rostro se deforma, tu sonido se transforma, en vivo.<br>
+    Una composición de ~1:45 que se repite.<br><br>
+    Todo ocurre en tu navegador. Nada se graba, se guarda ni se envía.<br>
+    Usa audífonos.
+  </div>
+  <button id="cerrarOnboarding">volver a la pieza</button>
 </div>
 
 <div class="container" id="fonca">

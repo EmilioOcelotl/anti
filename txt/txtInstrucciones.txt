@@ -9,3 +9,4 @@ Hay un repositorio que conduce a los módulos que conforman esta aplicación
 Ausencia y predicciones
 La cámara reconoce rostros no hay datos almacenados
 Una experiencia y una oportunidad 
+Hay un manual de ofuscación: el botón inferior o la tecla M

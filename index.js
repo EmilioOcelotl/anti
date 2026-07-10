@@ -62,21 +62,31 @@ document.querySelector('#startButton').addEventListener('click', async () => {
     micButton.style.display = 'block';
     if (libre) {
 	hud.style.display = 'block';
+	manualButton.style.display = 'block';
 	actualizarHud();
     }
     init();
 })
 
-// HUD mínimo (previo a la GUI de Fase 7): barra de ofuscación + vuelta ·
-// corpus · muestra. Solo tiene sentido en modo libre.
+// HUD mínimo + estado del manual (solo lectura): barra de ofuscación +
+// vuelta · corpus · muestra. Solo tiene sentido en modo libre.
 const hud = document.getElementById('hud');
 const hudNivel = document.getElementById('hudNivel');
 const hudTexto = document.getElementById('hudTexto');
+const estadoNivel = document.getElementById('estadoNivel');
+const estadoValor = document.getElementById('estadoValor');
+const estadoVuelta = document.getElementById('estadoVuelta');
 function actualizarHud(){
-    hudNivel.style.width = (ofuscacion * 100) + '%';
-    hudTexto.textContent = 'vuelta ' + (vueltaCorpus + 1) + ' · ' +
+    const linea = 'vuelta ' + (vueltaCorpus + 1) + ' · ' +
 	['manifiesto', 'escritura', 'manual'][vueltaCorpus % 3] +
 	' · muestra ' + granoIndice;
+    hudNivel.style.width = (ofuscacion * 100) + '%';
+    hudTexto.textContent = linea;
+    estadoNivel.style.width = (ofuscacion * 100) + '%';
+    estadoValor.textContent = ofuscacion.toFixed(2);
+    estadoVuelta.textContent = linea;
+    // En la vuelta 3 la pieza revela su propio manual: el botón sube de presencia.
+    manualButton.classList.toggle('revelado', vueltaCorpus % 3 === 2);
 }
 
 // M4/M5: botón de mic, apagado por defecto. Enciende/apaga la voz granulada
@@ -85,12 +95,201 @@ const micButton = document.getElementById('micButton');
 micButton.addEventListener('click', () => {
     micActivo = !micActivo;
     micButton.textContent = micActivo ? 'mic encendido' : 'mic apagado';
+    // El manual habilita la sección Voz solo con el mic encendido.
+    const seccionVoz = document.getElementById('seccionVoz');
+    seccionVoz.classList.toggle('sinMic', !micActivo);
+    if (micActivo) seccionVoz.open = true;
     if (micActivo) {
 	encenderVoz();
     } else {
 	apagarVoz();
     }
 })
+
+// Fase 7b — el manual de ofuscación: panel lateral nunca-modal que lee y
+// escribe `tecnicas` en vivo (la pieza sigue corriendo detrás). Acceso por
+// botón junto al mic y tecla M, solo en modo libre y tras Iniciar. Nada de
+// lo que se ajusta persiste: al recargar, el manual vuelve a su estado.
+const manualButton = document.getElementById('manualButton');
+
+function initManual(){
+
+    function ponManual(abierto){
+	document.body.classList.toggle('manual-abierto', abierto);
+	manualButton.setAttribute('aria-expanded', abierto);
+    }
+    manualButton.addEventListener('click', () =>
+	ponManual(!document.body.classList.contains('manual-abierto')));
+    document.getElementById('cerrarManual').addEventListener('click', () => ponManual(false));
+    document.addEventListener('keydown', (e) => {
+	// La tecla M solo cuando el manual está disponible (tras Iniciar, en libre).
+	if (e.target.tagName === 'INPUT' || manualButton.style.display !== 'block') return;
+	if (e.key === 'm' || e.key === 'M')
+	    ponManual(!document.body.classList.contains('manual-abierto'));
+	if (e.key === 'Escape') ponManual(false);
+    });
+
+    // Técnicas de slider: cada input escribe su clave en `tecnicas` (los
+    // sistemas las leen por frame/step) y el valor se teje en la frase.
+    const fmt = {
+	temblor: v => v.toFixed(2),
+	estela: v => v.toFixed(3),
+	velo: v => Math.round(v * 100) + '%',
+	grano: v => Math.round(v * 1000) + ' ms',
+	densidad: v => '' + v,
+	nivel: v => v.toFixed(2),
+	deslizamiento: v => v.toFixed(2) + ' s',
+	presencia: v => v.toFixed(2),
+	dispersion: v => v.toFixed(2),
+	eco: v => v.toFixed(2) + ' s',
+	quiebre: v => '±' + v.toFixed(2),
+    };
+    document.querySelectorAll('#manual .tecnica[data-k]').forEach((el) => {
+	const k = el.dataset.k;
+	const input = el.querySelector('input[type=range]');
+	const valor = el.querySelector('.valor');
+	const v = el.querySelector('.v');
+	input.value = tecnicas[k]; // la fuente de verdad es `tecnicas`, no el HTML
+	function pinta(){
+	    const txt = fmt[k](tecnicas[k]);
+	    valor.textContent = txt;
+	    if (v) v.textContent = txt;
+	    input.style.setProperty('--p',
+		(input.value - input.min) / (input.max - input.min) * 100 + '%');
+	}
+	input.addEventListener('input', () => {
+	    tecnicas[k] = parseFloat(input.value);
+	    pinta();
+	});
+	input.addEventListener('pointerdown', () => el.classList.add('activa'));
+	input.addEventListener('focus', () => el.classList.add('activa'));
+	input.addEventListener('blur', () => el.classList.remove('activa'));
+	pinta();
+    });
+    document.addEventListener('pointerup', () =>
+	document.querySelectorAll('#manual .tecnica.activa')
+	    .forEach((el) => el.classList.remove('activa')));
+
+    // Secuencia (8 pasos, tres patrones): el editor MUTA los arrays de
+    // `tecnicas` in place — el GrainSequencer guarda la referencia y lee
+    // el cambio al vuelo, sin reconstruir nada.
+    const patrones = {
+	ritmo:       { min: 0.25,  max: 2,    bipolar: false, fmt: v => '×' + v.toFixed(2) },
+	respiracion: { min: 0.5,   max: 2,    bipolar: false, fmt: v => '×' + v.toFixed(2) },
+	deriva:      { min: -0.08, max: 0.08, bipolar: true,  fmt: v => (v >= 0 ? '+' : '') + v.toFixed(3) },
+    };
+    let patActivo = 'ritmo';
+    const grid = document.getElementById('patGrid');
+    const patValor = document.getElementById('patValor');
+    const tabs = document.querySelectorAll('.patTabs button');
+
+    const pasos = [];
+    for (let i = 0; i < 8; i++) {
+	const p = document.createElement('div');
+	p.className = 'patPaso';
+	p.tabIndex = 0;
+	p.setAttribute('role', 'slider');
+	p.setAttribute('aria-label', 'paso ' + (i + 1));
+	const r = document.createElement('div');
+	r.className = 'relleno';
+	p.appendChild(r);
+	grid.appendChild(p);
+	pasos.push(p);
+    }
+
+    function pintaPatron(){
+	const pat = patrones[patActivo];
+	const datos = tecnicas[patActivo];
+	grid.classList.toggle('bipolar', pat.bipolar);
+	datos.forEach((v, i) => {
+	    const r = pasos[i].firstChild;
+	    const n = (v - pat.min) / (pat.max - pat.min); // 0..1
+	    if (pat.bipolar) {
+		const c = (0 - pat.min) / (pat.max - pat.min); // posición del cero
+		r.style.height = Math.max(Math.abs(n - c) * 100, 2) + '%';
+		r.style.bottom = (n >= c ? c * 100 : n * 100) + '%';
+	    } else {
+		r.style.height = Math.max(n * 100, 3) + '%';
+		r.style.bottom = '0%';
+	    }
+	    pasos[i].setAttribute('aria-valuemin', pat.min);
+	    pasos[i].setAttribute('aria-valuemax', pat.max);
+	    pasos[i].setAttribute('aria-valuenow', v.toFixed(3));
+	});
+    }
+
+    function fijaPaso(i, frac){
+	const pat = patrones[patActivo];
+	const v = pat.min + Math.max(0, Math.min(1, frac)) * (pat.max - pat.min);
+	tecnicas[patActivo][i] = v;
+	patValor.textContent = 'paso ' + (i + 1) + ' · ' + pat.fmt(v);
+	pintaPatron();
+    }
+
+    function pasoDesdeEvento(e){
+	const rect = grid.getBoundingClientRect();
+	const i = Math.max(0, Math.min(7, Math.floor((e.clientX - rect.left) / rect.width * 8)));
+	fijaPaso(i, 1 - (e.clientY - rect.top) / rect.height);
+    }
+
+    let arrastrando = false;
+    grid.addEventListener('pointerdown', (e) => {
+	arrastrando = true;
+	grid.setPointerCapture(e.pointerId);
+	pasoDesdeEvento(e);
+    });
+    grid.addEventListener('pointermove', (e) => { if (arrastrando) pasoDesdeEvento(e); });
+    grid.addEventListener('pointerup', () => { arrastrando = false; });
+
+    pasos.forEach((p, i) => {
+	p.addEventListener('keydown', (e) => {
+	    const pat = patrones[patActivo];
+	    const n = (tecnicas[patActivo][i] - pat.min) / (pat.max - pat.min);
+	    if (e.key === 'ArrowUp')   { fijaPaso(i, n + 0.05); e.preventDefault(); }
+	    if (e.key === 'ArrowDown') { fijaPaso(i, n - 0.05); e.preventDefault(); }
+	});
+    });
+
+    tabs.forEach((t) => t.addEventListener('click', () => {
+	patActivo = t.dataset.pat;
+	tabs.forEach((x) => x.classList.toggle('activo', x === t));
+	patValor.textContent = '';
+	pintaPatron();
+    }));
+
+    pintaPatron();
+
+    // Silencio: calla la escritura (mismo gesto que la GUI vieja — los
+    // meshes de texto salen de escena; despacharTexto ya respeta boolText).
+    const toggleTexto = document.getElementById('toggleTexto');
+    toggleTexto.addEventListener('click', () => {
+	boolText = !boolText;
+	toggleTexto.textContent = boolText ? 'texto visible' : 'texto oculto';
+	toggleTexto.classList.toggle('encendido', !boolText);
+	toggleTexto.setAttribute('aria-pressed', !boolText);
+	if (scene) {
+	    if (boolText) {
+		scene.add(text);
+		scene.add(text2);
+	    } else {
+		scene.remove(text);
+		scene.remove(text2);
+	    }
+	}
+    });
+
+    // Releer el inicio: reabre el texto de arranque sobre la pieza.
+    const onboarding = document.getElementById('onboarding');
+    document.getElementById('verInicio').addEventListener('click', () => {
+	onboarding.hidden = false;
+	document.getElementById('cerrarOnboarding').focus();
+    });
+    document.getElementById('cerrarOnboarding').addEventListener('click', () => {
+	onboarding.hidden = true;
+    });
+}
+// Se llama después de declarar `tecnicas` (const, más abajo): el panel
+// pinta sus valores iniciales desde ahí.
 
 let detector; 
 
@@ -365,9 +564,13 @@ const GRANO_OVERLAPS_MAX = 8;// granos simultáneos en máxima ofuscación (mín
 const SEQ_BPM = 30;           // tempo de la pieza: 2 s por beat
 const SEQ_STEPS_POR_BEAT = 2; // resolución del grid: 1 step = 1 s
 // Micro-ritmo del lecho — los ejes que el cuerpo no toca. rate emparentado
-// con los pbRate del synth retirado; windowSize respira alrededor de GRANO_VENTANA.
+// con los pbRate del synth retirado; windowSize respira alrededor de la
+// técnica `grano`: el patrón son multiplicadores relativos (7b) y el
+// windowSize real por step = tecnicas.grano × patrón — así el slider Grano
+// fija la duración base y Respiración respira alrededor sin taparlo.
+// (Equivale al patrón absoluto histórico con grano = 0.08.)
 const SEQ_RATE_PATRON = [1, 1.5, 1, 0.5, 1, 2, 0.75, 1];
-const SEQ_VENTANA_PATRON = [0.08, 0.1, 0.06, 0.12, 0.08, 0.05, 0.14, 0.08];
+const SEQ_VENTANA_PATRON = [1, 1.25, 0.75, 1.5, 1, 0.625, 1.75, 1];
 // Scrub del pointer por step, alrededor de la base que pone el cuerpo (ofuscación).
 const SEQ_POINTER_PATRON = [0, 0.03, -0.02, 0.05, 0, -0.04, 0.02, 0.06];
 // Suavizado de parámetros del motor: GrainEngine interpola cada parámetro
@@ -395,6 +598,36 @@ const VOZ_VENTANA_MOVIDO = 0.06; // granos cortos en máxima ofuscación
 const VOZ_OVERLAPS_QUIETO = 2;
 const VOZ_OVERLAPS_MOVIDO = 6;
 const VOZ_PITCH_MOVIDO = 0.6;    // randomPitch en máxima ofuscación
+
+// Fase 7a — técnicas del manual de ofuscación: los parámetros que la GUI
+// expone viven aquí y los sistemas los leen por frame/step (las const de
+// arriba quedan como valores por defecto). Al recargar, el manual vuelve a
+// su estado — nada persiste. Claves = técnicas del panel (nombres 7c, borrador).
+// Los patrones se editan MUTÁNDOLOS in place (el secuenciador guarda la referencia).
+const tecnicas = {
+    // I · Imagen
+    temblor: AMP_MOVIDO,             // amplitud de deformación en movimiento
+    estela: DAMP_TOPE,               // persistencia del afterimage en el techo
+    velo: OPACIDAD_PISO,             // opacidad mínima de la cámara
+    // II · Nube (nombre de sección por confirmar)
+    grano: GRANO_VENTANA,            // duración base de cada grano (s); Respiración lo escala por step
+    densidad: GRANO_OVERLAPS_MAX,    // granos simultáneos en el techo
+    nivel: GRANO_AMP_TOPE,           // nivel del lecho en máxima ofuscación
+    deslizamiento: GRANO_SUAVIZADO,  // suavizado del motor (glissando/recorrido)
+    ritmo: SEQ_RATE_PATRON,          // patrón de rate, 8 steps
+    respiracion: SEQ_VENTANA_PATRON, // patrón relativo de windowSize (× grano), 8 steps
+    deriva: SEQ_POINTER_PATRON,      // patrón de scrub del pointer, 8 steps
+    // III · Voz
+    presencia: VOZ_DIRECTA_AMP,      // nivel de la vía directa en reposo
+    dispersion: VOZ_AMP,             // nivel de la granulada en el techo
+    eco: VOZ_RETRASO,                // s detrás de la cabeza de escritura
+    quiebre: VOZ_PITCH_MOVIDO,       // randomPitch en máxima ofuscación
+    // IV · Escritura: Silencio opera sobre boolText directamente
+};
+
+// El panel del manual (7b) se cablea ya con `tecnicas` declarado.
+initManual();
+
 // let cotiBool = false;
 let escenasFolder = []; 
 let objEsc1, objEsc2; 
@@ -762,23 +995,24 @@ async function renderPrediction() {
 	// normalizado [0,1] descontando el piso de jitter
 	const movimiento = Math.min(Math.max((avg - AVG_PISO) / (AVG_MAX - AVG_PISO), 0), 1);
 	perlinValue = PERLIN_QUIETO + (PERLIN_MOVIDO - PERLIN_QUIETO) * movimiento;
-	perlinAmp = AMP_QUIETO + (AMP_MOVIDO - AMP_QUIETO) * movimiento;
+	perlinAmp = AMP_QUIETO + (tecnicas.temblor - AMP_QUIETO) * movimiento;
 
 	// Acumulador de ofuscación (Fase 2): integra el movimiento y decae
 	// al detenerse. Gobierna la capa lenta: trazas, opacidad del video
 	// y densidad/nivel del lecho granular.
 	ofuscacion = Math.min(1, Math.max(0, ofuscacion + movimiento * OFU_SUBIDA - OFU_BAJADA));
 
-	afterimagePass.uniforms['damp'].value = DAMP_BASE + (DAMP_TOPE - DAMP_BASE) * ofuscacion;
+	afterimagePass.uniforms['damp'].value = DAMP_BASE + (tecnicas.estela - DAMP_BASE) * ofuscacion;
 	// La cámara se difumina con la ofuscación pero nunca desaparece
 	// (los triángulos siguen: presencia dispersa, no borrada).
-	planeVideo.material.opacity = 1 - (1 - OPACIDAD_PISO) * ofuscacion;
+	planeVideo.material.opacity = 1 - (1 - tecnicas.velo) * ofuscacion;
 
 	if (grainEngine) {
 	    // El pointer ya no se escribe aquí: es del secuenciador (M3),
 	    // que lo cuantiza al grid con base en esta misma ofuscación.
-	    grainEngine.setOverlaps(1 + (GRANO_OVERLAPS_MAX - 1) * ofuscacion);
-	    grainEngine.setMasterAmp(GRANO_AMP_BASE + (GRANO_AMP_TOPE - GRANO_AMP_BASE) * ofuscacion);
+	    grainEngine.smoothingTime = tecnicas.deslizamiento;
+	    grainEngine.setOverlaps(1 + (tecnicas.densidad - 1) * ofuscacion);
+	    grainEngine.setMasterAmp(GRANO_AMP_BASE + (tecnicas.nivel - GRANO_AMP_BASE) * ofuscacion);
 	    grainEngine.setParamAtTime('randomPosition', movimiento);
 	    grainEngine.setParamAtTime('randomPitch', movimiento * 0.5);
 
@@ -804,18 +1038,18 @@ async function renderPrediction() {
 	if (micActivo && vozEngine) {
 	    // Crossfade directa↔granulada: la ofuscación disuelve la voz.
 	    vozDirecta.gain.setTargetAtTime(
-		VOZ_DIRECTA_AMP * (1 - ofuscacion), audioCtx().currentTime, 0.05);
-	    vozEngine.setMasterAmp(VOZ_AMP * ofuscacion);
+		tecnicas.presencia * (1 - ofuscacion), audioCtx().currentTime, 0.05);
+	    vozEngine.setMasterAmp(tecnicas.dispersion * ofuscacion);
 	    vozEngine.setParamAtTime('windowSize',
 		VOZ_VENTANA_QUIETO + (VOZ_VENTANA_MOVIDO - VOZ_VENTANA_QUIETO) * ofuscacion);
 	    vozEngine.setOverlaps(
 		VOZ_OVERLAPS_QUIETO + (VOZ_OVERLAPS_MOVIDO - VOZ_OVERLAPS_QUIETO) * ofuscacion);
-	    vozEngine.setParamAtTime('randomPitch', VOZ_PITCH_MOVIDO * ofuscacion);
+	    vozEngine.setParamAtTime('randomPitch', tecnicas.quiebre * ofuscacion);
 	    vozEngine.setParamAtTime('randomPosition', movimiento);
 	    // El pointer persigue la cabeza de escritura con retraso corto:
 	    // lo recién dicho, granulado casi en vivo.
 	    const cabeza = vozRecorder.currentPosition / vozRecorder.bufferSize;
-	    const retraso = VOZ_RETRASO / VOZ_BUFFER_S;
+	    const retraso = tecnicas.eco / VOZ_BUFFER_S;
 	    vozEngine.setParamAtTime('pointer', (cabeza - retraso + 1) % 1);
 	}
     }
@@ -2099,9 +2333,9 @@ async function initGranular(){
 	    pointer: 0,
 	    rate: 1,
 	    overlaps: 1,
-	    windowSize: GRANO_VENTANA,
+	    windowSize: tecnicas.grano,
 	});
-	grainEngine.smoothingTime = GRANO_SUAVIZADO;
+	grainEngine.smoothingTime = tecnicas.deslizamiento;
 	grainEngine.setMasterAmp(GRANO_AMP_BASE);
 	grainEngine.connect(ctx.destination);
 	grainEngine.start();
@@ -2159,10 +2393,16 @@ function avanzarMuestra(){
 // pointer. Nadie escribe el parámetro del otro.
 function initSecuenciador(){
     grainSeq = new GrainSequencer(audioCtx(), SEQ_BPM, SEQ_STEPS_POR_BEAT);
-    grainSeq.addSequence('rate', SEQ_RATE_PATRON, grainEngine);
-    grainSeq.addSequence('windowSize', SEQ_VENTANA_PATRON, grainEngine);
+    // Los patrones son los arrays de `tecnicas` por referencia: el manual
+    // (initManual) los edita mutándolos in place y el secuenciador los lee
+    // al vuelo. windowSize no va por addSequence: se calcula por step como
+    // grano × respiración (patrón relativo), en el mismo triggerStep que
+    // dispara onStepChange — mismo timing que el pointer.
+    grainSeq.addSequence('rate', tecnicas.ritmo, grainEngine);
     grainSeq.onStepChange = (step) => {
-	const scrub = SEQ_POINTER_PATRON[step % SEQ_POINTER_PATRON.length];
+	const respira = tecnicas.respiracion[step % tecnicas.respiracion.length];
+	grainEngine.setParamAtTime('windowSize', tecnicas.grano * respira);
+	const scrub = tecnicas.deriva[step % tecnicas.deriva.length];
 	const pointer = Math.min(1, Math.max(0, ofuscacion + scrub));
 	grainEngine.setParamAtTime('pointer', pointer);
 	despacharTexto(step);
