@@ -9,15 +9,17 @@
    PROPUESTA FASE 7 — LA GUI COMO MANUAL DE OFUSCACIÓN
    Mockup estático y navegable. No controla nada real.
    Tinta única: blanco a distintas opacidades, como la pieza.
+   Regla de presencia: todo tramo lleno (slider, barra) es más
+   brillante Y más grueso que su cauce — el valor se ve.
    ============================================================ */
 
 :root {
-  --tinta-1: rgba(255,255,255,.85);
-  --tinta-2: rgba(255,255,255,.62);
-  --tinta-3: rgba(255,255,255,.42);
-  --tinta-4: rgba(255,255,255,.24);
-  --linea:   rgba(255,255,255,.16);
-  --panel-w: 322px;
+  --tinta-1: rgba(255,255,255,.95);
+  --tinta-2: rgba(255,255,255,.78);
+  --tinta-3: rgba(255,255,255,.6);
+  --tinta-4: rgba(255,255,255,.34);
+  --linea:   rgba(255,255,255,.26);
+  --panel-w: 400px;
 }
 
 * { box-sizing: border-box; }
@@ -33,7 +35,7 @@ body {
 button { font-family: Monospace; }
 
 :focus-visible {
-  outline: 1px dashed rgba(255,255,255,.65);
+  outline: 2px dashed rgba(255,255,255,.8);
   outline-offset: 2px;
 }
 
@@ -89,54 +91,60 @@ button { font-family: Monospace; }
   left: 12px;
   bottom: 12px;
   z-index: 3;
-  color: rgba(255,255,255,.7);
-  font-size: 11px;
+  color: rgba(255,255,255,.85);
+  font-size: 0.8125rem;
   text-transform: uppercase;
 }
 #hudBarra {
-  width: 140px;
-  height: 3px;
-  border: 1px solid rgba(255,255,255,.4);
+  width: 200px;
+  height: 8px;
+  border: 1px solid rgba(255,255,255,.5);
   margin-bottom: 6px;
 }
 #hudNivel {
   width: 0%;
   height: 100%;
-  background: rgba(255,255,255,.7);
+  /* el borde de avance siempre es lo más brillante de la barra */
+  background: linear-gradient(to right, rgba(255,255,255,.45), #fff);
 }
 
 /* ---------- botones flotantes: manual + mic ---------- */
-/* Se corren a la izquierda cuando el manual está abierto. */
+/* Viven en un contenedor flex (el hueco entre ellos no depende del
+   ancho de sus textos) que se corre a la izquierda con el manual abierto. */
 
-#micButton, #manualButton {
+#botones {
   position: fixed;
   bottom: 12px;
+  right: 12px;
   z-index: 5;
-  background: rgba(0,0,0,.35);
-  border: 1px solid rgba(255,255,255,.5);
+  display: flex;
+  gap: 10px;
+  transition: right .28s ease, opacity .25s;
+}
+body.manual-abierto #botones { right: calc(var(--panel-w) + 12px); }
+
+#micButton, #manualButton {
+  background: rgba(0,0,0,.55);
+  border: 1px solid rgba(255,255,255,.8);
   border-radius: 10px;
-  color: rgba(255,255,255,.7);
+  color: rgba(255,255,255,.9);
   padding: 8px 14px;
   text-transform: uppercase;
   cursor: pointer;
-  font-size: 12px;
-  transition: right .28s ease, color .2s, border-color .2s;
+  font-size: 0.875rem;
+  transition: color .2s, border-color .2s;
 }
-#micButton  { right: 12px; }
-#manualButton { right: 132px; }
-
-body.manual-abierto #micButton  { right: calc(var(--panel-w) + 12px); }
-body.manual-abierto #manualButton { right: calc(var(--panel-w) + 132px); }
 
 #micButton:hover, #manualButton:hover {
-  color: var(--tinta-1);
-  border-color: rgba(255,255,255,.8);
+  color: #fff;
+  border-color: #fff;
 }
 
 /* En la vuelta 3 la pieza señala su propio manual (demo del estado). */
 #manualButton.revelado {
-  color: var(--tinta-1);
-  border-color: rgba(255,255,255,.85);
+  color: #fff;
+  border-color: #fff;
+  box-shadow: 0 0 10px rgba(255,255,255,.35);
 }
 
 /* ---------- el manual ---------- */
@@ -148,10 +156,10 @@ body.manual-abierto #manualButton { right: calc(var(--panel-w) + 132px); }
   bottom: 0;
   width: min(var(--panel-w), 92vw);
   z-index: 4;
-  background: rgba(0,0,0,.78);
+  background: rgba(0,0,0,.82);
   backdrop-filter: blur(9px);
   -webkit-backdrop-filter: blur(9px);
-  border-left: 1px solid var(--linea);
+  border-left: 2px solid var(--linea);
   transform: translateX(102%);
   transition: transform .28s ease;
   overflow-y: auto;
@@ -174,7 +182,7 @@ body.manual-abierto #manual { transform: translateX(0); }
   margin-bottom: 4px;
 }
 #manualCabecera h1 {
-  font-size: 12px;
+  font-size: 0.875rem;
   font-weight: normal;
   letter-spacing: 2px;
   text-transform: uppercase;
@@ -185,14 +193,14 @@ body.manual-abierto #manual { transform: translateX(0); }
   background: transparent;
   border: 0;
   color: var(--tinta-3);
-  font-size: 14px;
+  font-size: 1rem;
   cursor: pointer;
   padding: 2px 6px;
 }
 #cerrarManual:hover { color: var(--tinta-1); }
 
 .epigrafe {
-  font-size: 10px;
+  font-size: 0.75rem;
   color: var(--tinta-3);
   margin: 0 0 8px 0;
   line-height: 1.6;
@@ -205,7 +213,7 @@ body.manual-abierto #manual { transform: translateX(0); }
   border-radius: 10px;
   padding: 6px 12px;
   margin-bottom: 10px;
-  font-size: 10px;
+  font-size: 0.75rem;
   text-transform: uppercase;
   color: var(--tinta-2);
 }
@@ -216,11 +224,15 @@ body.manual-abierto #manual { transform: translateX(0); }
 }
 #estadoBarra {
   width: 100%;
-  height: 3px;
-  border: 1px solid rgba(255,255,255,.35);
+  height: 8px;
+  border: 1px solid rgba(255,255,255,.45);
   margin: 4px 0 5px 0;
 }
-#estadoNivel { width: 0%; height: 100%; background: rgba(255,255,255,.7); }
+#estadoNivel {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(to right, rgba(255,255,255,.45), #fff);
+}
 #estado .dato { display: flex; justify-content: space-between; margin-top: 3px; }
 #estado .dato b { font-weight: normal; color: var(--tinta-1); }
 
@@ -232,19 +244,19 @@ summary {
   list-style: none;
   cursor: pointer;
   padding: 7px 2px;
-  font-size: 11px;
+  font-size: 0.8125rem;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: var(--tinta-3);
+  color: var(--tinta-2);
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 summary::-webkit-details-marker { display: none; }
 summary:hover { color: var(--tinta-1); }
-summary .marca { color: var(--tinta-4); transition: transform .2s; font-size: 10px; }
+summary .marca { color: var(--tinta-4); transition: transform .2s; font-size: 0.75rem; }
 details[open] summary .marca { transform: rotate(90deg); }
-details[open] summary { color: var(--tinta-2); }
+details[open] summary { color: var(--tinta-1); }
 summary .sub { color: var(--tinta-4); letter-spacing: 0; text-transform: lowercase; margin-left: 8px; }
 
 .cuerpoSeccion { padding: 2px 2px 6px 2px; }
@@ -258,7 +270,7 @@ summary .sub { color: var(--tinta-4); letter-spacing: 0; text-transform: lowerca
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 11px;
+  font-size: 0.8125rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--tinta-2);
@@ -275,7 +287,7 @@ summary .sub { color: var(--tinta-4); letter-spacing: 0; text-transform: lowerca
 .tecnica.activa .valor { color: #fff; }
 
 .linea-manual {
-  font-size: 10.5px;
+  font-size: 0.8125rem;
   line-height: 1.45;
   color: var(--tinta-3);
   margin: 2px 0 3px 0;
@@ -286,48 +298,49 @@ summary .sub { color: var(--tinta-4); letter-spacing: 0; text-transform: lowerca
 }
 .tecnica:hover .linea-manual { color: var(--tinta-2); }
 
-/* slider: línea de 1px, pulgar cuadrado */
+/* slider: el tramo lleno es una cuña de luz (3px, culmina en blanco
+   puro); el tramo vacío queda como cauce de 1px tenue */
 
 input[type=range] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 12px;
+  height: 18px;
   margin: 0;
   background: transparent;
   cursor: pointer;
   --p: 50%;
 }
 input[type=range]::-webkit-slider-runnable-track {
-  height: 12px;
-  background: linear-gradient(to right,
-    rgba(255,255,255,.7) var(--p), rgba(255,255,255,.16) var(--p));
-  background-size: 100% 1px;
-  background-position: center;
-  background-repeat: no-repeat;
+  height: 18px;
+  background:
+    linear-gradient(to right, rgba(255,255,255,.5), #fff)
+      left center / var(--p) 3px no-repeat,
+    linear-gradient(rgba(255,255,255,.25), rgba(255,255,255,.25))
+      left center / 100% 1px no-repeat;
 }
 input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 9px;
-  height: 9px;
-  margin-top: 1.5px;
+  width: 13px;
+  height: 13px;
+  margin-top: 2.5px;
   background: #000;
-  border: 1px solid rgba(255,255,255,.85);
+  border: 1px solid #fff;
 }
 input[type=range]::-moz-range-track {
   height: 1px;
-  background: rgba(255,255,255,.16);
+  background: rgba(255,255,255,.25);
 }
 input[type=range]::-moz-range-progress {
-  height: 1px;
-  background: rgba(255,255,255,.7);
+  height: 3px;
+  background: linear-gradient(to right, rgba(255,255,255,.5), #fff);
 }
 input[type=range]::-moz-range-thumb {
-  width: 7px;
-  height: 7px;
+  width: 11px;
+  height: 11px;
   border-radius: 0;
   background: #000;
-  border: 1px solid rgba(255,255,255,.85);
+  border: 1px solid #fff;
 }
 
 /* secuenciador de 8 pasos */
@@ -338,7 +351,7 @@ input[type=range]::-moz-range-thumb {
   border: 1px solid transparent;
   border-radius: 10px;
   color: var(--tinta-4);
-  font-size: 10px;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   padding: 4px 9px;
@@ -347,13 +360,13 @@ input[type=range]::-moz-range-thumb {
 .patTabs button:hover { color: var(--tinta-2); }
 .patTabs button.activo {
   color: var(--tinta-1);
-  border-color: rgba(255,255,255,.4);
+  border-color: rgba(255,255,255,.55);
 }
 
 #patGrid {
   display: flex;
   gap: 4px;
-  height: 44px;
+  height: 56px;
   border: 1px solid var(--linea);
   border-radius: 10px;
   padding: 5px;
@@ -377,16 +390,16 @@ input[type=range]::-moz-range-thumb {
   position: absolute;
   left: 15%;
   width: 70%;
-  background: rgba(255,255,255,.55);
+  background: rgba(255,255,255,.85);
 }
 .patPaso:hover .relleno,
-.patPaso:focus-visible .relleno { background: rgba(255,255,255,.9); }
+.patPaso:focus-visible .relleno { background: #fff; }
 
 .patPies {
   display: flex;
   gap: 4px;
   margin-top: 2px;
-  font-size: 9px;
+  font-size: 0.6875rem;
   color: var(--tinta-4);
 }
 .patPies span { flex: 1; text-align: center; }
@@ -395,23 +408,23 @@ input[type=range]::-moz-range-thumb {
 
 .toggleTecnica {
   background: transparent;
-  border: 1px solid rgba(255,255,255,.4);
+  border: 1px solid rgba(255,255,255,.55);
   border-radius: 10px;
   color: var(--tinta-2);
   padding: 6px 12px;
-  font-size: 10px;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   cursor: pointer;
 }
-.toggleTecnica:hover { color: var(--tinta-1); border-color: rgba(255,255,255,.7); }
-.toggleTecnica.encendido { color: #000; background: rgba(255,255,255,.75); }
+.toggleTecnica:hover { color: var(--tinta-1); border-color: rgba(255,255,255,.85); }
+.toggleTecnica.encendido { color: #000; background: rgba(255,255,255,.92); }
 
 /* sección voz apagada sin mic */
 
 #seccionVoz.sinMic .cuerpoSeccion { opacity: .3; pointer-events: none; }
 #notaVoz {
-  font-size: 10px;
+  font-size: 0.75rem;
   color: var(--tinta-3);
   margin: 0 0 14px 0;
   display: none;
@@ -431,7 +444,7 @@ input[type=range]::-moz-range-thumb {
 
 #manualPie {
   margin-top: 8px;
-  font-size: 10px;
+  font-size: 0.75rem;
   line-height: 1.7;
   color: var(--tinta-4);
   display: flex;
@@ -441,11 +454,11 @@ input[type=range]::-moz-range-thumb {
 }
 #verInicio {
   background: transparent;
-  border: 1px solid rgba(255,255,255,.35);
+  border: 1px solid rgba(255,255,255,.45);
   border-radius: 10px;
   color: var(--tinta-3);
   padding: 5px 10px;
-  font-size: 10px;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   cursor: pointer;
@@ -486,18 +499,17 @@ input[type=range]::-moz-range-thumb {
 /* en pantallas angostas el panel cubre casi todo: los botones
    flotantes se retiran mientras el manual está abierto (tiene su ×) */
 @media (max-width: 640px) {
-  body.manual-abierto #micButton,
-  body.manual-abierto #manualButton,
+  body.manual-abierto #botones,
   body.manual-abierto #hud {
     opacity: 0;
     pointer-events: none;
   }
-  #micButton, #manualButton, #hud { transition: opacity .25s; }
+  #hud { transition: opacity .25s; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .tri { animation: none; }
-  #manual, #micButton, #manualButton { transition: none; }
+  #manual, #botones { transition: none; }
 }
 </style>
 </head>
@@ -517,8 +529,10 @@ input[type=range]::-moz-range-thumb {
 </div>
 
 <!-- ================= botones flotantes ================= -->
-<button id="manualButton" aria-expanded="true" aria-controls="manual">manual</button>
-<button id="micButton">mic apagado</button>
+<div id="botones">
+  <button id="manualButton" aria-expanded="true" aria-controls="manual">manual</button>
+  <button id="micButton">mic apagado</button>
+</div>
 
 <!-- ================= el manual ================= -->
 <aside id="manual" aria-label="manual de ofuscación">
